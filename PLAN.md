@@ -182,15 +182,35 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 
 ## 9. Status
 
-| Phase | Status |
-|---|---|
-| 1. Repo & scaffolding | Not started |
-| 2. Local infra | Not started |
-| 3. Intake API | Not started |
-| 4. Extraction | Not started |
-| 5. Temporal wiring | Not started |
-| 6. Face match + screening | Not started |
-| 7. Risk scoring + review queue | Not started |
-| 8. Audit trail | Not started |
-| 9. Hardening | Not started |
-| 10. AWS infra + deploy | Not started |
+| Phase | Status | Tag | Commit | Date |
+|---|---|---|---|---|
+| 1. Repo & scaffolding | **Done** | `v0.1.0` | `5dc28ed` | 2026-07-20 |
+| 2. Local infra | Not started | — | — | — |
+| 3. Intake API | Not started | — | — | — |
+| 4. Extraction | Not started | — | — | — |
+| 5. Temporal wiring | Not started | — | — | — |
+| 6. Face match + screening | Not started | — | — | — |
+| 7. Risk scoring + review queue | Not started | — | — | — |
+| 8. Audit trail | Not started | — | — | — |
+| 9. Hardening | Not started | — | — | — |
+| 10. AWS infra + deploy | Not started | — | — | — |
+
+## 10. Changelog
+
+### Phase 1 — 2026-07-20 (`v0.1.0`, commit `5dc28ed`)
+
+**Done:**
+
+- Repo initialized and connected to <https://github.com/ynitin2004/Sentrilog> (`main` branch).
+- Layout scaffolded: `services/{intake,pipeline,screening}`, `infra/terraform/`, `docs/`, `tests/`.
+- Python tooling: `uv`-managed `pyproject.toml`, `ruff`, `black`, `mypy` (strict), `pytest`, pre-commit hooks.
+- GitHub Actions CI (`.github/workflows/ci.yml`): installs `uv`, runs ruff/black/mypy/pytest on every push and PR to `main`.
+- README.md written with architecture, stack table, and repo layout.
+- No `LICENSE` file added (explicit decision — proprietary by default, revisit before any external release).
+
+**Testing evidence (senior-engineer standard, per §8):**
+
+- `uv run ruff check .`, `uv run black --check .`, `uv run mypy services tests`, `uv run pytest -v` all run clean locally against the full scaffold.
+- Pre-commit hooks were **proven, not assumed**: a throwaway file with an unused variable and a missing type annotation was deliberately added, confirmed that `ruff` flagged the unused variable (F841) and auto-fixed an unused import, and `mypy` flagged the missing annotation — then the probe file was deleted and never staged/committed.
+- `pre-commit run --all-files` passes clean on the real, committed file set.
+- **Known gap (explicit, not silent):** CI has not yet been observed running on GitHub's runners (only run locally so far) — first PR against `main` will be the first real CI execution; if it fails there for an environment reason not reproducible locally, that's a Phase 1 follow-up, not a Phase 2 concern.
