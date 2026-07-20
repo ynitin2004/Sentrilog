@@ -185,7 +185,7 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 | Phase | Status | Tag | Commit | Date |
 |---|---|---|---|---|
 | 1. Repo & scaffolding | **Done** | `v0.1.0` | `5dc28ed` | 2026-07-20 |
-| 2. Local infra | Not started | — | — | — |
+| 2. Local infra | **Done** | `v0.2.0` | `74c0014` | 2026-07-20 |
 | 3. Intake API | Not started | — | — | — |
 | 4. Extraction | Not started | — | — | — |
 | 5. Temporal wiring | Not started | — | — | — |
@@ -214,3 +214,22 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 - Pre-commit hooks were **proven, not assumed**: a throwaway file with an unused variable and a missing type annotation was deliberately added, confirmed that `ruff` flagged the unused variable (F841) and auto-fixed an unused import, and `mypy` flagged the missing annotation — then the probe file was deleted and never staged/committed.
 - `pre-commit run --all-files` passes clean on the real, committed file set.
 - **Known gap (explicit, not silent):** the first two pushes to `main` (`5dc28ed`, `a94443f`) both show CI as `failure` on GitHub, but not for a code/workflow reason — the GitHub API reports *"The job was not started because your account is locked due to a billing issue."* The runner never started; nothing in `ci.yml` has been validated on GitHub's infra yet. **Action item (owner: repo owner, not engineering):** resolve the GitHub account billing lock, then re-push (or re-run) to get a real CI signal before Phase 2 work lands.
+
+### Phase 2 — 2026-07-20 (`v0.2.0`, commit `74c0014`)
+
+**Done:**
+
+- `docker-compose.yml`: Postgres 16, Qdrant, MinIO (+ a one-shot `minio-init` job that creates and versions the `sentrilog-documents` bucket), Temporal (`auto-setup`, sharing the Postgres instance via its own `temporal`/`temporal_visibility` databases), and Temporal UI — added ahead of schedule since Phase 5 needs it and it's free to include now.
+- `infra/docker/postgres-init/001_schema.sql`: all 7 core tables from the data model (§4), with a schema refinement — added a `row_hash` column to `audit_log` alongside `prev_row_hash`, since a hash chain requires each row to store its own computed hash for the next row to reference; the original sketch only listed `prev_row_hash`, which wasn't actually enough to build a chain from.
+- Status/method/decision fields use `TEXT` + `CHECK` constraints rather than native Postgres `ENUM` types, to avoid `ALTER TYPE` friction while the schema is still moving pre-Phase 8.
+- `Makefile` with `up`/`down`/`reset`/`ps`/`logs`/`psql` targets. `up` uses `docker compose up -d --wait`, which blocks and fails fast rather than reporting false-positive success on a container that's merely "running" but not yet healthy.
+
+**Testing evidence (senior-engineer standard, per §8):**
+
+- **A real bug was found and fixed, not just checked for:** the initial Temporal healthcheck (`/dev/tcp/localhost/7233`) failed every time — `docker inspect` showed `Connection refused`. Root cause, confirmed by exec'ing into the container and inspecting `netstat`: the `auto-setup` image binds its gRPC frontend to the container's own hostname/IP (e.g. `172.19.0.6:7233`), never to loopback. Fixed by healthchecking via `tctl --address "$(hostname):7233" cluster health` instead of a raw `/dev/tcp` probe against `localhost` — this also has the advantage of checking the actual gRPC service is serving, not just that a TCP port is open.
+- **Persistence, verified, not assumed:** inserted a probe row into `cases`, ran `docker compose restart postgres`, confirmed the row survived (named volume, not container-ephemeral storage) — then deleted the probe row before finalizing.
+- **Full-reset path exercised:** `docker compose down -v` (destroys all named volumes) followed by `docker compose up -d --wait` reliably re-runs `postgres-init` from scratch — confirmed via `\dt` (all 7 tables present) and `SELECT count(*) FROM cases` (0 rows) on the fresh instance, and all 5 containers reported `healthy`/running again without manual intervention.
+- **Regression check:** re-ran the full Phase 1 suite (`ruff`, `black --check`, `mypy`, `pytest`) after all Phase 2 changes — still clean; Phase 2 touched no Python code, so this mainly confirms nothing in the working tree drifted.
+- Qdrant confirmed reachable (`GET /collections` → empty list, expected pre-Phase 6) and the MinIO bucket confirmed created and listable via `mc ls`.
+- **Known gap (explicit, not silent):** `make up`/`make down` etc. were *not* run via `make` itself — this Windows dev machine has no `make` installed. Validated instead by running the underlying `docker compose` commands directly; the Makefile targets are a straight passthrough so this is low-risk, but genuinely untested with `make` as the entry point. Flag if `make` becomes available and this should be re-verified.
+- **Workflow-convention deviation (explicit):** work was done on branch `phase-2-local-infra` per §8's convention, but merged directly into `main` via `git merge` + push rather than a GitHub PR — no `gh`/API auth is configured in this environment, matching how Phase 1 was actually committed (straight to `main`). If real PR review is wanted going forward, we need `gh auth login` or a token set up first.
