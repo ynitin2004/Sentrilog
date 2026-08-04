@@ -241,7 +241,7 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 |---|---|---|---|---|
 | 1. Repo & scaffolding | **Done** | `v0.1.0` | `5dc28ed` | 2026-07-20 |
 | 2. Local infra | **Done** (incl. multi-tenancy amendment) | `v0.2.1` | `5bdbcfc` | 2026-08-04 |
-| 3. Intake API | **Done** | `v0.3.0` | *pending* | 2026-08-04 |
+| 3. Intake API | **Done** | `v0.3.0` | `01a1c0d` | 2026-08-04 |
 | 4. Extraction | Not started | — | — | — |
 | 5. Temporal wiring | Not started | — | — | — |
 | 6. Face match + screening | Not started | — | — | — |
@@ -312,7 +312,7 @@ Closes the multi-tenancy gap flagged above, before any Phase 3 code depends on t
 - **Attempted to close the Phase 2 "`make` not installed" gap:** `choco install make -y` was run to try to close it properly. It failed on `UnauthorizedAccessException` writing to `C:\ProgramData\chocolatey\lib-bad` — this shell doesn't have the admin rights Chocolatey needs. **Known gap, now root-caused instead of just noted:** installing `make` on this machine requires an elevated (admin) shell, which isn't available here. Still validated via the underlying `docker compose`/`psql` commands directly.
 - Test tenants/cases/reviewers created during RLS testing were wiped by the fresh-volume regression step above, not left behind as stray data.
 
-### Phase 3 — 2026-08-04 (`v0.3.0`, commit *pending*)
+### Phase 3 — 2026-08-04 (`v0.3.0`, commit `01a1c0d`)
 
 **Done:**
 
