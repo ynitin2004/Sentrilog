@@ -171,10 +171,10 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 - `docker-compose.yml`: Postgres, Qdrant, MinIO, Temporal dev server (+ its Postgres/Elasticsearch).
 - `make up` / `make down`; seed script for the Postgres schema.
 - **Exit criteria:** `make up` brings up all services healthy; empty tables visible via `psql`.
-- **Amendment required before Phase 3 starts:** this schema predates the multi-tenancy design in §4/§7 — it has no `tenant_id` anywhere. A follow-up migration (`002_multi_tenancy.sql`) adding `tenants`, `api_keys`, `webhooks`, `webhook_deliveries`, and `tenant_id` on every existing table must land first. Calling this out explicitly rather than silently carrying a single-tenant schema into a multi-tenant product.
+- **Amendment landed (`002_multi_tenancy.sql`, `v0.2.1`):** the original schema predated the multi-tenancy design in §4/§7 and had no `tenant_id` anywhere. `tenants`, `api_keys`, `reviewers`, `webhooks`, `webhook_deliveries` were added, `tenant_id` was denormalized onto every existing table, an idempotency-key uniqueness constraint was added to `cases`, `review_decisions.reviewer_id` became a real FK, and Postgres row-level security was enabled and **proven** (not just enabled) via a dedicated non-superuser `sentrilog_app` role — see the Changelog entry for the full test evidence, including the cross-tenant write that was actually rejected by the policy.
 
 ### Phase 3 — Intake API *(scope updated for multi-tenancy — see §7)*
-- Run the Phase 2 schema amendment above first.
+- Multi-tenancy schema amendment already landed in Phase 2 (`002_multi_tenancy.sql`) — Phase 3 builds on it rather than needing to run it.
 - FastAPI: `POST /cases` → case row + presigned PUT URLs for ID + selfie, scoped to the authenticated tenant.
 - Per-tenant API-key authentication: hashed at rest, resolved to a `tenant_id` before any other table is touched.
 - Idempotency: `Idempotency-Key` support backed by `UNIQUE (tenant_id, idempotency_key)` — a retried request must not create a duplicate case.
@@ -240,7 +240,7 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 | Phase | Status | Tag | Commit | Date |
 |---|---|---|---|---|
 | 1. Repo & scaffolding | **Done** | `v0.1.0` | `5dc28ed` | 2026-07-20 |
-| 2. Local infra | **Done** (schema amendment pending — see §9) | `v0.2.0` | `74c0014` | 2026-07-20 |
+| 2. Local infra | **Done** (incl. multi-tenancy amendment) | `v0.2.1` | *pending* | 2026-08-04 |
 | 3. Intake API | Not started | — | — | — |
 | 4. Extraction | Not started | — | — | — |
 | 5. Temporal wiring | Not started | — | — | — |
@@ -289,3 +289,25 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 - **Known gap (explicit, not silent):** `make up`/`make down` etc. were *not* run via `make` itself — this Windows dev machine has no `make` installed. Validated instead by running the underlying `docker compose` commands directly; the Makefile targets are a straight passthrough so this is low-risk, but genuinely untested with `make` as the entry point. Flag if `make` becomes available and this should be re-verified.
 - **Workflow-convention deviation (explicit):** work was done on branch `phase-2-local-infra` per §9's convention, but merged directly into `main` via `git merge` + push rather than a GitHub PR — no `gh`/API auth is configured in this environment, matching how Phase 1 was actually committed (straight to `main`). If real PR review is wanted going forward, we need `gh auth login` or a token set up first.
 - **Retroactive scope note (2026-07-20, this update):** the schema shipped in this phase has no `tenant_id`/multi-tenancy support. That gap is now tracked explicitly in §4/§7/§9 as a required migration at the start of Phase 3, rather than silently left for someone to discover later.
+
+### Phase 2 amendment — 2026-08-04 (`v0.2.1`, commit *pending*)
+
+Closes the multi-tenancy gap flagged above, before any Phase 3 code depends on the old single-tenant shape.
+
+**Done:**
+
+- `infra/docker/postgres-init/002_multi_tenancy.sql`: adds `tenants`, `api_keys`, `reviewers`, `webhooks`, `webhook_deliveries`; denormalizes `tenant_id` onto every existing table; adds `UNIQUE (tenant_id, idempotency_key)` on `cases`; converts `review_decisions.reviewer_id` from free-text to a real FK into `reviewers`.
+- Enables Postgres row-level security on every tenant-scoped table, `FORCE`d so table owners don't silently bypass it.
+- **Design correction found while implementing this, not before:** `POSTGRES_USER` (`sentrilog`) is a superuser, and RLS is *always* bypassed for superusers and table owners regardless of `FORCE ROW LEVEL SECURITY` — no override exists. That means the app can never connect as `sentrilog` and have RLS do anything. Added a separate, unprivileged `sentrilog_app` role with explicit per-table grants (`SELECT`/`INSERT`/`UPDATE`; `audit_log` gets `INSERT` only, foreshadowing the full lockdown in Phase 8) for the application to connect as instead.
+- Both migration files (`001`, `002`) now run together in order on any fresh volume via `docker-entrypoint-initdb.d`'s filename-ordered execution — no separate manual step for new environments.
+
+**Testing evidence (senior-engineer standard, per §9) — this is the part that actually matters for a security control:**
+
+- **RLS proven with real cross-tenant attempts, not just "enabled and trusted":** connected as `sentrilog_app` (not the superuser), created two tenants, inserted a case for Tenant A, confirmed Tenant A's session sees it (`count = 1`) and Tenant B's session does not (`count = 0`) — then attempted an `INSERT` from a Tenant-B session tagged with Tenant A's `tenant_id`, and confirmed Postgres rejected it: `ERROR: new row violates row-level security policy for table "cases"`.
+- **Fail-closed verified:** a `sentrilog_app` session that never sets `app.tenant_id` at all sees zero rows, not every tenant's data — confirmed directly, not inferred from the policy definition.
+- **Idempotency constraint tested both directions:** two inserts with the same `(tenant_id, idempotency_key)` — second one correctly rejected (`duplicate key value violates unique constraint`); two inserts with `NULL` idempotency keys — both correctly succeeded (Postgres treats `NULL`s as distinct in a unique constraint), so internally-created cases without a client-supplied key aren't blocked by the same rule.
+- **`reviewer_id` FK tested both directions:** an insert referencing a nonexistent reviewer was correctly rejected (`violates foreign key constraint`); after creating a real `reviewers` row, the same insert succeeded.
+- **Full fresh-volume regression:** `docker compose down -v` followed by `up -d --wait` confirmed all 12 tables (7 original + 5 new) exist automatically from a cold start, `tenants`/`cases` are empty as expected, and the `sentrilog_app` role + RLS policies are present and functional without any manual step — proving `002` genuinely composes with `001` via `docker-entrypoint-initdb.d`'s ordering, not just that it worked when applied by hand once.
+- **Regression check:** re-ran the full Phase 1 suite (`ruff`, `black --check`, `mypy`, `pytest`) after this change — still clean.
+- **Attempted to close the Phase 2 "`make` not installed" gap:** `choco install make -y` was run to try to close it properly. It failed on `UnauthorizedAccessException` writing to `C:\ProgramData\chocolatey\lib-bad` — this shell doesn't have the admin rights Chocolatey needs. **Known gap, now root-caused instead of just noted:** installing `make` on this machine requires an elevated (admin) shell, which isn't available here. Still validated via the underlying `docker compose`/`psql` commands directly.
+- Test tenants/cases/reviewers created during RLS testing were wiped by the fresh-volume regression step above, not left behind as stray data.
