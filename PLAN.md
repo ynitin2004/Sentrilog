@@ -241,7 +241,7 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 |---|---|---|---|---|
 | 1. Repo & scaffolding | **Done** | `v0.1.0` | `5dc28ed` | 2026-07-20 |
 | 2. Local infra | **Done** (incl. multi-tenancy amendment) | `v0.2.1` | `5bdbcfc` | 2026-08-04 |
-| 3. Intake API | Not started | — | — | — |
+| 3. Intake API | **Done** | `v0.3.0` | *pending* | 2026-08-04 |
 | 4. Extraction | Not started | — | — | — |
 | 5. Temporal wiring | Not started | — | — | — |
 | 6. Face match + screening | Not started | — | — | — |
@@ -311,3 +311,32 @@ Closes the multi-tenancy gap flagged above, before any Phase 3 code depends on t
 - **Regression check:** re-ran the full Phase 1 suite (`ruff`, `black --check`, `mypy`, `pytest`) after this change — still clean.
 - **Attempted to close the Phase 2 "`make` not installed" gap:** `choco install make -y` was run to try to close it properly. It failed on `UnauthorizedAccessException` writing to `C:\ProgramData\chocolatey\lib-bad` — this shell doesn't have the admin rights Chocolatey needs. **Known gap, now root-caused instead of just noted:** installing `make` on this machine requires an elevated (admin) shell, which isn't available here. Still validated via the underlying `docker compose`/`psql` commands directly.
 - Test tenants/cases/reviewers created during RLS testing were wiped by the fresh-volume regression step above, not left behind as stray data.
+
+### Phase 3 — 2026-08-04 (`v0.3.0`, commit *pending*)
+
+**Done:**
+
+- `services/intake/`: FastAPI app (`main.py`) with `POST /cases` and `GET /cases/{id}`; `config.py` (pydantic-settings, reads `.env`); `db.py` (asyncpg pool, tenant-scoped connections); `storage.py` (MinIO/S3 presigned PUT URLs via boto3); `auth.py` (API-key resolution); `ratelimit.py` (in-memory fixed-window limiter); `scanning.py` (upload validation + malware-scan stub); `schemas.py` (request/response models).
+- `.env.example` + local `.env` (gitignored) — the project's first actual use of environment-based config; credentials mirror `docker-compose.yml`'s existing dev-only values.
+- `scripts/seed_dev_tenant.py`: bootstraps a tenant + API key for local testing (no admin API exists — deliberately out of scope per §7).
+- `POST /cases` returns presigned upload URLs for `id_document` and `selfie`, namespaced under the authenticated tenant's own ID (`{tenant_id}/{case_id}/{doc_type}`) — a client can never influence where its own or another tenant's files land.
+- `Idempotency-Key` support: replays return the original case, and the constraint is correctly scoped `(tenant_id, idempotency_key)` — the same key from two different tenants creates two independent cases.
+- Cross-tenant reads return `404`, not `403` — proven, not just intended: a case genuinely invisible to another tenant doesn't confirm to them that it exists.
+
+**Real bugs found and fixed while implementing this (not found later, not left in):**
+
+1. **RLS chicken-and-egg on `api_keys`:** resolving an API key to its tenant is exactly the step that has to happen *before* `app.tenant_id` is known, but `api_keys` has RLS requiring it. Fixed with a narrow `SECURITY DEFINER` function, `resolve_api_key()` (migration `003_auth_lookup.sql`) — it exposes only the one lookup the app needs, not blanket access to the table.
+2. **`documents.sha256 NOT NULL` was incompatible with presigned uploads:** the API creates the document row (to hand out a presigned URL tied to a specific document id) before the file exists in S3, so it cannot know the hash yet. Made nullable (migration `004_documents_sha256_nullable.sql`); real hash computation/verification is a Phase 4/5 concern once something actually reads the object.
+3. **`SET LOCAL app.tenant_id = $1` doesn't work — Postgres doesn't accept bind parameters for `SET`/`SET LOCAL`, only literals.** This was in the core RLS-enforcing code path (`db.tenant_connection`) and had gone unnoticed because earlier Phase 2 testing used literal values typed directly into `psql`, never a real parameterized query. Caught immediately when the dev-seed script hit `PostgresSyntaxError: syntax error at or near "$1"`. Fixed by switching to `SELECT set_config('app.tenant_id', $1, true)`, which is a real function and does accept parameters — also closes what would otherwise have been a SQL-injection path on the one value RLS depends on.
+4. **pytest-asyncio: session-scoped DB pool vs. function-scoped test event loops.** The connection pool (created once per test session) and each test's default per-test event loop didn't match, surfacing as `RuntimeError: Task ... attached to a different loop`. Fixed with `asyncio_default_fixture_loop_scope = "session"` and `asyncio_default_test_loop_scope = "session"`.
+5. **Test cleanup hit `permission denied for table documents`:** `sentrilog_app` deliberately has no `DELETE` grant on any table (Phase 2 design — the app can create cases but never delete them, which is part of the audit-integrity story, not an oversight). Test teardown needs a separate, explicitly-marked admin connection; production code must never use it. **This bug briefly leaked 24 test tenants into the dev database** before the fix — caught by actually checking row counts after a "passing" test run, not by trusting green tests alone, and cleaned up by hand before moving on.
+6. Minor: ruff's `B008` flagged FastAPI's required `Depends()`-in-default idiom as a bug; allowlisted via `extend-immutable-calls` rather than disabling the rule. mypy's "source file found twice" needed a missing `services/__init__.py`. mypy's untyped-boto3-client warning was fixed by using `mypy_boto3_s3.client.S3Client` properly instead of suppressing it.
+
+**Testing evidence (senior-engineer standard, per §9):**
+
+- **Manual smoke test against the real running service first** (8 scenarios via curl, before any automated test existed): case creation, idempotent replay, a real file `PUT` to the presigned URL followed by confirming the object in MinIO via `mc ls`, owner access (200), cross-tenant access (404), missing auth (401), invalid key (401), invalid content-type (422).
+- **Rate limiting proven under real load, not configured and assumed:** 65 rapid requests against a 60/60s limit returned `200` exactly 60 times then `429` for the remaining 5, with a `Retry-After` header present.
+- **14 automated integration tests** (`tests/intake/test_cases.py`) against the live Postgres/MinIO stack (no mocking) covering: tenant-scoped upload targets, idempotency replay, idempotency scoped per-tenant (not global — the one test that would catch a regression to a global uniqueness constraint), real presigned-URL upload, cross-tenant 404, missing/invalid auth, malformed case IDs including a SQL-injection-shaped string (never 500s), oversized/invalid-content-type rejection, and the rate limiter.
+- **Regression check:** Phase 1 scaffold test and all Phase 1/2 static checks (`ruff`, `black --check`, `mypy`, `pre-commit run --all-files`) re-run clean after all Phase 3 changes.
+- **Known gap (explicit, not silent):** the rate limiter is in-process/in-memory — correct for one uvicorn worker, but each additional replica gets an independent counter, so real enforcement doesn't hold under multi-replica deployment. Documented in `ratelimit.py`; the actual fix is edge-level rate limiting in Phase 10 (§5), which was already the plan before this was ever a gap.
+- **Known gap (explicit, not silent):** malware scanning (`scanning.scan_for_malware`) is a stub that always returns clean — the call site and pipeline position exist now, per Phase 3 scope, but no real scanner is wired up yet.
