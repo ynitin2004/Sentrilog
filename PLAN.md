@@ -240,7 +240,7 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 | Phase | Status | Tag | Commit | Date |
 |---|---|---|---|---|
 | 1. Repo & scaffolding | **Done** | `v0.1.0` | `5dc28ed` | 2026-07-20 |
-| 2. Local infra | **Done** (incl. multi-tenancy amendment) | `v0.2.1` | *pending* | 2026-08-04 |
+| 2. Local infra | **Done** (incl. multi-tenancy amendment) | `v0.2.1` | `5bdbcfc` | 2026-08-04 |
 | 3. Intake API | Not started | — | — | — |
 | 4. Extraction | Not started | — | — | — |
 | 5. Temporal wiring | Not started | — | — | — |
@@ -290,7 +290,7 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 - **Workflow-convention deviation (explicit):** work was done on branch `phase-2-local-infra` per §9's convention, but merged directly into `main` via `git merge` + push rather than a GitHub PR — no `gh`/API auth is configured in this environment, matching how Phase 1 was actually committed (straight to `main`). If real PR review is wanted going forward, we need `gh auth login` or a token set up first.
 - **Retroactive scope note (2026-07-20, this update):** the schema shipped in this phase has no `tenant_id`/multi-tenancy support. That gap is now tracked explicitly in §4/§7/§9 as a required migration at the start of Phase 3, rather than silently left for someone to discover later.
 
-### Phase 2 amendment — 2026-08-04 (`v0.2.1`, commit *pending*)
+### Phase 2 amendment — 2026-08-04 (`v0.2.1`, commit `5bdbcfc`)
 
 Closes the multi-tenancy gap flagged above, before any Phase 3 code depends on the old single-tenant shape.
 
