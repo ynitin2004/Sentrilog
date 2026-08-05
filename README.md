@@ -51,6 +51,7 @@ infra/
   terraform/   # AWS infrastructure (Phase 10)
 docs/          # Design notes, runbooks
 PLAN.md        # Full project plan: architecture, data model, 10-phase delivery plan, status
+STUDY.md       # Concepts introduced each phase, explained, with links to further reading
 ```
 
 ## Status
