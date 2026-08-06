@@ -184,9 +184,10 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 - Integration tests: upload flow succeeds and is correctly tenant-scoped; a duplicate idempotency key does not create a second case; tenant A's API key cannot read or reference tenant B's case.
 - **Exit criteria:** curl/Postman flow uploads a file with a valid API key; case row has the correct S3 key and `tenant_id`; a repeated request with the same idempotency key is a no-op; cross-tenant access is proven to fail, not just assumed to.
 
-### Phase 4 — Extraction (OCR + VLM structured output)
+### Phase 4 — Extraction (OCR + VLM structured output) *(open decisions resolved — see §11)*
 - Pydantic `IDDocument` schema.
-- OCR pass (PaddleOCR to start) + schema-constrained VLM call.
+- Deterministic MRZ (ICAO 9303) fast path for passports/national IDs that have one — free, checksum-validated, preferred over the VLM whenever available.
+- Schema-constrained VLM call (Gemini, free tier for now — swappable, see §11) as the fallback for documents without an MRZ.
 - Bounded retry (2-3 tries) with validation-error injected into the retry prompt.
 - Confidence score attached to output.
 - **Exit criteria:** unit tests cover valid extraction, malformed-image retry path, and exhausted-retries → `needs_review` flag.
@@ -242,7 +243,7 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 | 1. Repo & scaffolding | **Done** | `v0.1.0` | `5dc28ed` | 2026-07-20 |
 | 2. Local infra | **Done** (incl. multi-tenancy amendment) | `v0.2.1` | `5bdbcfc` | 2026-08-04 |
 | 3. Intake API | **Done** | `v0.3.0` | `01a1c0d` | 2026-08-04 |
-| 4. Extraction | Not started | — | — | — |
+| 4. Extraction | **Done** | `v0.4.0` | *pending* | 2026-08-06 |
 | 5. Temporal wiring | Not started | — | — | — |
 | 6. Face match + screening | Not started | — | — | — |
 | 7. Risk scoring + review queue | Not started | — | — | — |
@@ -340,3 +341,31 @@ Closes the multi-tenancy gap flagged above, before any Phase 3 code depends on t
 - **Regression check:** Phase 1 scaffold test and all Phase 1/2 static checks (`ruff`, `black --check`, `mypy`, `pre-commit run --all-files`) re-run clean after all Phase 3 changes.
 - **Known gap (explicit, not silent):** the rate limiter is in-process/in-memory — correct for one uvicorn worker, but each additional replica gets an independent counter, so real enforcement doesn't hold under multi-replica deployment. Documented in `ratelimit.py`; the actual fix is edge-level rate limiting in Phase 10 (§5), which was already the plan before this was ever a gap.
 - **Known gap (explicit, not silent):** malware scanning (`scanning.scan_for_malware`) is a stub that always returns clean — the call site and pipeline position exist now, per Phase 3 scope, but no real scanner is wired up yet.
+
+### Phase 4 — 2026-08-06 (`v0.4.0`, commit *pending*)
+
+**Open decisions resolved:** VLM provider is **Gemini** (`gemini-2.5-flash`, free tier for development), behind a swappable `VLMClient` interface so switching providers later (e.g. GPT-4o) is a new adapter class, not a rewrite. OCR/MRZ decision: a deterministic **ICAO 9303 MRZ parser** (free, checksum-validated) is tried first for passports/national IDs that have one; the VLM is the fallback for everything else, rather than OCR text being piped through an LLM to structure it. Face-match model choice (§6.4) is still open, for Phase 6.
+
+**Done:**
+
+- `services/pipeline/extraction/schemas.py`: `IDDocument`, and `VLMExtractionResponse` (see below).
+- `services/pipeline/extraction/mrz.py`: full ICAO 9303 TD3 (passport) MRZ parser — check-digit algorithm, per-field and composite checksum validation, name/date/document-number extraction. Free, deterministic, no model call.
+- `services/pipeline/extraction/vlm.py`: `VLMClient` protocol + `GeminiVLMClient`, using Gemini's native Structured Outputs (`response_schema`) rather than parsing free-text.
+- `services/pipeline/extraction/extract.py`: orchestration — MRZ first (short-circuits the VLM entirely when valid), VLM fallback with bounded retry and validation-error-injected re-prompting, confidence scoring (first-try clean extraction scores highest), `needs_review` on exhaustion.
+- `scripts/smoke_test_gemini_extraction.py`: one-off manual proof against the *real* Gemini API using a synthetically drawn image (fabricated fields, never real ID data) — deliberately not part of the automated suite, since it costs real API quota and isn't deterministic.
+
+**Real bugs found and fixed while implementing this — the most consequential phase yet for this pattern:**
+
+1. **Postgres `SET`-parameter mistake's sibling, this time in Python packaging:** numpy's own type stubs (pulled in transitively via `easyocr`) use PEP 695 `type` statement syntax, which mypy refuses to parse below Python 3.12. Not a bug in our code, but it forced a real decision: bumped `requires-python`, ruff/black `target-version`, mypy's `python_version`, and the CI Python install all to 3.12, consistently, rather than silencing the error.
+2. **A VLM asked for a strict schema will hallucinate rather than admit failure — confirmed against the live API, not assumed.** Given a blank test image: first attempt returned `full_name=''`, `document_number=''`, and a suspicious `1970-01-01` default date — schema-valid, so it was silently accepted as a successful extraction at 0.85 confidence. Adding `min_length=1` closed that hole; the model's response to *that* was to return the literal string `"NOT_AVAILABLE"` in every field, which also trivially passes a non-empty check. There is no bounded set of placeholder strings to defend against. The actual fix: `VLMExtractionResponse` wraps `IDDocument` with a `document_visible: bool` field, giving the model an explicit, honest way to say "I can't read this" — `extract_with_vlm` now treats `document_visible=False` as a failed attempt (retry, then `needs_review`), not a valid empty result. Re-verified against the real API after the fix: the same blank image now correctly exhausts retries into `needs_review=True`, `document=None`.
+3. **`truststore.inject_into_ssl()` patches `ssl.SSLContext` process-wide, not just for Gemini.** This was needed because a corporate TLS-inspecting proxy (Kaspersky) injects its own root certificate that certifi's bundled CA list doesn't trust — confirmed by testing a plain HTTPS request to google.com, which failed identically, before touching any Gemini-specific code. The global patch fixed Gemini but broke boto3/botocore's S3 client construction elsewhere in the *same test run* with a `RecursionError` in unrelated SSL setup — caught by running the full suite, not just the new tests. Fixed by scoping the trust-store behavior to a `truststore.SSLContext` passed into `GeminiVLMClient`'s own `httpx.Client` via `HttpOptions`, leaving the global `ssl` module — and every other component's TLS handling — untouched.
+4. Minor: `google-genai`'s `contents` parameter type is a deeply nested Union of Lists that mypy can't resolve a mixed `[Part, str]` literal against, due to list invariance — a real SDK type-signature limitation, not a bug in the call (it matches Google's own documented usage and is proven working against the live API). Fixed with a narrowly-scoped, explained `type: ignore[arg-type]` rather than fighting it further.
+
+**Testing evidence (senior-engineer standard, per §9):**
+
+- **MRZ checksum algorithm verified two independent ways**, not just against itself: (a) hand-verifiable cases (`_check_digit("1") == 7`, computed by hand: value×weight = 1×7 = 7) that don't depend on any MRZ context at all; (b) a self-consistent synthetic MRZ built programmatically (not a memorized "known-good" real-world test vector, which risks silently encoding a transcription mistake as the expected answer) — field-extraction correctness is verified independently of checksums (pure string slicing), and checksum *sensitivity* is verified by corrupting one character and confirming both the specific field and the composite check fail together.
+- **The real Gemini integration was proven twice against the live API, not just mocked**: once on a valid synthetic ID image (perfect extraction, `confidence=1.0`, all six fields correct), and once on a deliberately blank image, which is what surfaced bug #2 above and then confirmed the fix.
+- **20 automated unit tests** (`test_mrz.py`, `test_extract.py`) using a fake `VLMClient` — deliberate, since hitting the real API on every test run costs quota and isn't deterministic — covering: clean first-try extraction, malformed-response retry-then-succeed, `document_visible=False` retry-then-succeed and exhaustion-into-`needs_review`, plain exhausted-retries, MRZ short-circuiting the VLM entirely (asserting zero model calls), missing/invalid MRZ falling through to the VLM instead of trusting partial data.
+- **Full regression**: all 28 tests (Phase 3's 12 intake integration tests included, to catch exactly the cross-cutting `truststore` regression above) plus `ruff`, `black --check`, `mypy`, `pre-commit run --all-files` clean after every fix, not just at the end.
+- **Known gap (explicit, not silent):** EasyOCR (~240MB, torch/torchvision) is installed as a dependency per the original plan to read MRZ text off a cropped image region, but that OCR-to-MRZ-text wiring itself isn't built yet — `mrz.py`'s `parse_td3()` takes already-extracted MRZ line strings, proven with synthetic text directly. Wiring a real image crop through EasyOCR into those two lines is Phase 5 work, when this gets connected to the actual case/document pipeline.
+- **Known gap (explicit, not silent):** the Gemini key in use is a free-tier key with different data-usage terms than paid tiers (see `.env.example`) — only synthetic test images have been sent through it, consistent with the policy agreed before this phase started.

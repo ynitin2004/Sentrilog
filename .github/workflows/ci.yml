@@ -18,7 +18,7 @@ jobs:
           enable-cache: true
 
       - name: Set up Python
-        run: uv python install 3.11
+        run: uv python install 3.12
 
       - name: Install dependencies
         run: uv sync --all-groups
@@ -30,7 +30,7 @@ jobs:
         run: uv run black --check .
 
       - name: Mypy type check
-        run: uv run mypy services tests
+        run: uv run mypy services tests scripts
 
       - name: Run tests
         run: uv run pytest -v
