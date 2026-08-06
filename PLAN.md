@@ -243,7 +243,7 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 | 1. Repo & scaffolding | **Done** | `v0.1.0` | `5dc28ed` | 2026-07-20 |
 | 2. Local infra | **Done** (incl. multi-tenancy amendment) | `v0.2.1` | `5bdbcfc` | 2026-08-04 |
 | 3. Intake API | **Done** | `v0.3.0` | `01a1c0d` | 2026-08-04 |
-| 4. Extraction | **Done** | `v0.4.0` | *pending* | 2026-08-06 |
+| 4. Extraction | **Done** | `v0.4.0` | `ed00d1c` | 2026-08-06 |
 | 5. Temporal wiring | Not started | — | — | — |
 | 6. Face match + screening | Not started | — | — | — |
 | 7. Risk scoring + review queue | Not started | — | — | — |
@@ -342,7 +342,7 @@ Closes the multi-tenancy gap flagged above, before any Phase 3 code depends on t
 - **Known gap (explicit, not silent):** the rate limiter is in-process/in-memory — correct for one uvicorn worker, but each additional replica gets an independent counter, so real enforcement doesn't hold under multi-replica deployment. Documented in `ratelimit.py`; the actual fix is edge-level rate limiting in Phase 10 (§5), which was already the plan before this was ever a gap.
 - **Known gap (explicit, not silent):** malware scanning (`scanning.scan_for_malware`) is a stub that always returns clean — the call site and pipeline position exist now, per Phase 3 scope, but no real scanner is wired up yet.
 
-### Phase 4 — 2026-08-06 (`v0.4.0`, commit *pending*)
+### Phase 4 — 2026-08-06 (`v0.4.0`, commit `ed00d1c`)
 
 **Open decisions resolved:** VLM provider is **Gemini** (`gemini-2.5-flash`, free tier for development), behind a swappable `VLMClient` interface so switching providers later (e.g. GPT-4o) is a new adapter class, not a rewrite. OCR/MRZ decision: a deterministic **ICAO 9303 MRZ parser** (free, checksum-validated) is tried first for passports/national IDs that have one; the VLM is the fallback for everything else, rather than OCR text being piped through an LLM to structure it. Face-match model choice (§6.4) is still open, for Phase 6.
 
