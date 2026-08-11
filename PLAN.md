@@ -244,7 +244,7 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 | 2. Local infra | **Done** (incl. multi-tenancy amendment) | `v0.2.1` | `5bdbcfc` | 2026-08-04 |
 | 3. Intake API | **Done** | `v0.3.0` | `01a1c0d` | 2026-08-04 |
 | 4. Extraction | **Done** | `v0.4.0` | `ed00d1c` | 2026-08-06 |
-| 5. Temporal wiring | **Done** | `v0.5.0` | *pending* | 2026-08-11 |
+| 5. Temporal wiring | **Done** | `v0.5.0` | `b904547` | 2026-08-11 |
 | 6. Face match + screening | Not started | — | — | — |
 | 7. Risk scoring + review queue | Not started | — | — | — |
 | 8. Audit trail | Not started | — | — | — |
@@ -370,7 +370,7 @@ Closes the multi-tenancy gap flagged above, before any Phase 3 code depends on t
 - **Known gap (explicit, not silent):** EasyOCR (~240MB, torch/torchvision) is installed as a dependency per the original plan to read MRZ text off a cropped image region, but that OCR-to-MRZ-text wiring itself isn't built yet — `mrz.py`'s `parse_td3()` takes already-extracted MRZ line strings, proven with synthetic text directly. Wiring a real image crop through EasyOCR into those two lines is Phase 5 work, when this gets connected to the actual case/document pipeline.
 - **Known gap (explicit, not silent):** the Gemini key in use is a free-tier key with different data-usage terms than paid tiers (see `.env.example`) — only synthetic test images have been sent through it, consistent with the policy agreed before this phase started.
 
-### Phase 5 — 2026-08-11 (`v0.5.0`, commit *pending*)
+### Phase 5 — 2026-08-11 (`v0.5.0`, commit `b904547`)
 
 **Done:**
 
