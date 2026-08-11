@@ -11,6 +11,7 @@ from .ratelimit import InMemoryRateLimiter
 from .scanning import validate_upload_request
 from .schemas import CaseCreateRequest, CaseCreateResponse, CaseResponse, UploadTarget
 from .storage import presigned_put_url
+from .temporal import start_kyc_case_workflow
 
 _rate_limiter = InMemoryRateLimiter(
     limit=settings.rate_limit_requests, window_seconds=settings.rate_limit_window_seconds
@@ -106,6 +107,18 @@ async def create_case(
                 )
                 assert doc_row is not None
                 doc_by_type[doc_type] = doc_row
+
+        plan_tier = await conn.fetchval(
+            "SELECT plan_tier FROM tenants WHERE id = $1", auth.tenant_id
+        )
+
+    # Outside the DB transaction: starting a workflow is an external side effect, not
+    # transactional with Postgres. Known gap, not silent: if this fails after the case row
+    # already committed, the case is left in 'pending' with no workflow driving it forward --
+    # a transactional-outbox pattern would close this properly; not built here (see PLAN.md
+    # Phase 5 changelog). start_kyc_case_workflow is itself idempotent on case_id, so replays
+    # (including this same request retried by the client) don't double-start anything.
+    await start_kyc_case_workflow(tenant_id=auth.tenant_id, case_id=case_id, plan_tier=plan_tier)
 
     targets: dict[str, UploadTarget] = {}
     for doc_type in _DOC_TYPES:
