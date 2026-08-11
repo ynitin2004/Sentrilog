@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     rate_limit_requests: int = 60
     rate_limit_window_seconds: int = 60
     max_upload_bytes: int = 10 * 1024 * 1024
+    temporal_address: str = "localhost:7233"
+    temporal_namespace: str = "default"
 
 
 settings = Settings()  # type: ignore[call-arg]
