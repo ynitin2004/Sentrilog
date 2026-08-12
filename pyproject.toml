@@ -13,6 +13,13 @@ dependencies = [
     "easyocr>=1.7.2",
     "truststore>=0.9.0",
     "temporalio>=1.8.0",
+    # Pinned below 1.14: qdrant-client requires its minor version stay within 1 of the
+    # Qdrant server's (v1.12.4 in docker-compose.yml) or it warns/refuses -- 1.19 (the
+    # unpinned latest) was 7 minors ahead and triggered a compatibility warning on every call.
+    "qdrant-client>=1.13.0,<1.14.0",
+    "metaphone>=0.6",
+    "insightface>=0.7.3",
+    "onnxruntime>=1.19.0",
 ]
 
 [dependency-groups]
