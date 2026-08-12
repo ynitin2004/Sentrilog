@@ -16,7 +16,9 @@ from .. import db
 from ..config import settings
 from .activities import (
     extract_document_activity,
-    fetch_id_document_activity,
+    face_match_activity,
+    fetch_case_documents_activity,
+    sanctions_screen_activity,
     update_case_status_activity,
 )
 from .kyc_case import KycCaseWorkflow
@@ -36,8 +38,10 @@ async def main() -> None:
             task_queue=task_queue_for_plan_tier(tier),
             workflows=[KycCaseWorkflow],
             activities=[
-                fetch_id_document_activity,
+                fetch_case_documents_activity,
                 extract_document_activity,
+                face_match_activity,
+                sanctions_screen_activity,
                 update_case_status_activity,
             ],
         )

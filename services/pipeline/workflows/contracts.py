@@ -31,3 +31,5 @@ class KycCaseResult:
     confidence: float | None = None
     method: str | None = None
     reason: str | None = None
+    face_match_score: float | None = None
+    sanctions_hit_count: int | None = None
