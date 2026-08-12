@@ -245,7 +245,7 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 | 3. Intake API | **Done** | `v0.3.0` | `01a1c0d` | 2026-08-04 |
 | 4. Extraction | **Done** | `v0.4.0` | `ed00d1c` | 2026-08-06 |
 | 5. Temporal wiring | **Done** | `v0.5.0` | `b904547` | 2026-08-11 |
-| 6. Face match + screening | **Done** | `v0.6.0` | *pending* | 2026-08-12 |
+| 6. Face match + screening | **Done** | `v0.6.0` | `565fd8d` | 2026-08-12 |
 | 7. Risk scoring + review queue | Not started | — | — | — |
 | 8. Audit trail | Not started | — | — | — |
 | 9. Hardening | Not started | — | — | — |
@@ -395,7 +395,7 @@ Closes the multi-tenancy gap flagged above, before any Phase 3 code depends on t
 - **Known gap (explicit, not silent):** the "client hasn't uploaded yet" retry path relies entirely on Temporal's own retry/backoff with no `heartbeat_timeout` configured on the fetch/extraction activities — a dead worker is only detected once the configured `start_to_close_timeout` elapses (30s / 5min respectively), not sooner. Fine for this phase's exit criteria (proven above); tightening this with explicit heartbeating is a Phase 9 hardening concern if faster failure detection turns out to matter in practice.
 - **Known gap (explicit, not silent):** starting the workflow in `services/intake/main.py` happens *after* the DB transaction commits, as a separate, non-transactional step — if it fails, the case row exists with no workflow driving it forward. `start_kyc_case_workflow` is idempotent so a client retry recovers cleanly, but there's no automatic recovery for a client that never retries. A transactional-outbox pattern would close this properly; not built here, flagged for Phase 9/10.
 
-### Phase 6 — 2026-08-12 (`v0.6.0`, commit *pending*)
+### Phase 6 — 2026-08-12 (`v0.6.0`, commit `565fd8d`)
 
 **Open decision resolved:** face-match model is **InsightFace** (self-hosted ArcFace embeddings via the `buffalo_l` model pack) — free, no per-call cost, biometric data never leaves the VPC, versus Rekognition's managed convenience. Agreed with the user earlier in this project's planning as the right default for a product whose whole differentiator is data sovereignty.
 
