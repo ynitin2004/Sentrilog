@@ -36,6 +36,16 @@ async def resolve_api_key(key_hash: str) -> asyncpg.Record | None:
     )
 
 
+async def resolve_reviewer_token(token_hash: str) -> asyncpg.Record | None:
+    """Same pattern as resolve_api_key, for reviewer bearer tokens
+    (see 006_reviewer_auth_and_claims.sql)."""
+    pool = get_pool()
+    return await pool.fetchrow(
+        "SELECT tenant_id, reviewer_id, role, revoked_at FROM resolve_reviewer_token($1)",
+        token_hash,
+    )
+
+
 @asynccontextmanager
 async def tenant_connection(tenant_id: str) -> AsyncIterator[asyncpg.Connection]:
     """Acquires a pooled connection scoped to one tenant for a single transaction.

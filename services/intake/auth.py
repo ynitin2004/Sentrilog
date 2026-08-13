@@ -20,6 +20,13 @@ class AuthContext:
     api_key_id: str
 
 
+@dataclass(frozen=True)
+class ReviewerAuthContext:
+    tenant_id: str
+    reviewer_id: str
+    role: str
+
+
 async def require_api_key(authorization: str | None = Header(default=None)) -> AuthContext:
     if authorization is None or not authorization.startswith("Bearer "):
         raise HTTPException(
@@ -37,3 +44,32 @@ async def require_api_key(authorization: str | None = Header(default=None)) -> A
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key revoked")
 
     return AuthContext(tenant_id=str(row["tenant_id"]), api_key_id=str(row["api_key_id"]))
+
+
+async def require_reviewer(
+    authorization: str | None = Header(default=None),
+) -> ReviewerAuthContext:
+    # Same hash-and-resolve pattern as require_api_key -- reviewer tokens are high-entropy
+    # random tokens too (see scripts/seed_dev_reviewer.py), not human-chosen passwords.
+    if authorization is None or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or malformed Authorization header; expected 'Bearer <reviewer_token>'",
+        )
+    raw_token = authorization.removeprefix("Bearer ").strip()
+    if not raw_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Empty reviewer token")
+
+    row = await db.resolve_reviewer_token(hash_api_key(raw_token))
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid reviewer token"
+        )
+    if row["revoked_at"] is not None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Reviewer token revoked"
+        )
+
+    return ReviewerAuthContext(
+        tenant_id=str(row["tenant_id"]), reviewer_id=str(row["reviewer_id"]), role=row["role"]
+    )

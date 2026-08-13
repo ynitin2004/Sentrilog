@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -35,3 +36,25 @@ class CaseResponse(BaseModel):
     subject_dob: date | None
     decision: str | None
     created_at: datetime
+
+
+class ReviewQueueCase(BaseModel):
+    case_id: str
+    subject_name: str
+    subject_dob: date | None
+    risk_score: float | None
+    created_at: datetime
+    claimed_by_reviewer_id: str | None
+    claimed_at: datetime | None
+
+
+class ReviewDecisionRequest(BaseModel):
+    decision: Literal["approved", "rejected", "escalated"]
+    justification: str
+
+
+class ReviewDecisionResponse(BaseModel):
+    case_id: str
+    decision: str
+    reviewer_id: str
+    decided_at: datetime
