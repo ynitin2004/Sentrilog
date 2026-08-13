@@ -124,17 +124,36 @@ This file grows every phase — treat it as a second changelog, one for concepts
 
 ---
 
-## Coming up in Phase 4 (preview — filled in properly once built)
+## Phase 7 concepts
 
-- **Structured output from a VLM** — forcing a vision-language model to return JSON matching a fixed schema (a Pydantic model here), rather than free-text you have to parse and hope is well-formed.
-- **Bounded retry with error-feedback prompting** — when the model's output fails schema validation, feeding the *validation error itself* back into the next attempt, rather than just repeating the same prompt and hoping for a different result.
-- **Confidence scoring** — treating "how sure is this extraction" as a first-class output, not an afterthought, since it's what routes a case to auto-clear vs. human review.
+### Temporal signals + `wait_condition` (human-in-the-loop)
+
+**What:** A signal is an async message delivered into a *running* workflow from the outside world (here: the intake API's decision endpoint calling `handle.signal(name, payload)`). A `@workflow.signal`-decorated method is the handler; `await workflow.wait_condition(fn)` suspends the workflow (durably — it can wait for hours or days without holding any resources) until `fn()` becomes true.
+
+**Why here:** `KycCaseWorkflow` needs to pause indefinitely once a case reaches `needs_review`, then resume exactly where it left off once a reviewer decides — without polling, without a separate scheduler, and without losing any progress if the worker process restarts while waiting (that's the whole point of *durable* execution). Signals + `wait_condition` are the mechanism Temporal gives you for that instead of hand-rolling a poll loop or a message queue.
+
+**The real bug this surfaced:** the first version stored the pending decision in a single field and reset it to `None` at the top of the wait loop ("start fresh each time"). That's wrong: a signal can arrive and set the field *before* the workflow even reaches the wait loop (e.g. while an earlier activity is still running) — and the reset would silently wipe it out, leaving the workflow waiting forever for a signal that already came. The fix was a queue (`list[ReviewDecisionSignal]`) that's only ever appended to and popped from, never reset. This is a general lesson, not a Temporal quirk: any time you're consuming an event that might arrive before you start listening for it, "reset then wait" is a race — "append then check what's there" isn't.
+
+**Read more:** <https://docs.temporal.io/develop/python/message-passing#signals> · <https://docs.temporal.io/develop/python/message-passing#wait-condition>
+
+### The queue is a status value, not a table
+
+**What:** There's no `review_queue` table. "The queue" is simply `SELECT * FROM cases WHERE status = 'needs_review'`.
+
+**Why here:** A separate queue table would need to be kept in sync with `cases.status` on every transition — two sources of truth for the same fact, with all the drift-and-bugs risk that implies. Since a case's status is already the authoritative record of whether it needs review, querying it directly *is* the queue. This only works because "claimed" is deliberately advisory (a `claimed_by_reviewer_id` column, not a lock) — a real exclusive-claim system would need more than a status filter.
+
+### HMAC webhook signatures
+
+**What:** Before sending a webhook payload, compute `HMAC-SHA256(shared_secret, request_body)` and send it as a header (`X-Sentrilog-Signature`). The receiver recomputes the same HMAC over the raw body it received and compares — a match proves the payload came from us (or someone with the secret) and wasn't altered in transit.
+
+**Why here:** A webhook URL is public-ish (anyone who guesses or leaks it can `POST` to it), so the receiving side needs a way to distinguish a genuine Sentrilog delivery from a forged one. A shared secret + HMAC is the standard pattern (Stripe, GitHub, and most webhook providers all do this) — the alternative, trusting the payload just because it arrived at the right URL, means anyone who finds that URL can fabricate case decisions.
+
+**Read more:** <https://docs.github.com/en/webhooks/using-webhooks/validating-webhook-deliveries> — GitHub's docs walk through the same pattern used here.
 
 ---
 
 ## Coming up later (named now so you know to watch for them)
 
-- **Temporal workflows/activities** (Phase 5) — durable execution, retry policies, signals for human-in-the-loop.
-- **Vector similarity + phonetic matching** (Phase 6) — how "Mohammed" and "Muhammad" get recognized as the same name.
+- **Immutable audit trail via hash chaining** (Phase 8) — `row_hash`/`prev_row_hash` linking every audit row to the one before it, so tampering with history breaks the chain.
 - **OpenTelemetry tracing** (Phase 9) — following one request across multiple services/processes.
 - **Terraform modules & remote state** (Phase 10) — infrastructure as version-controlled code.
