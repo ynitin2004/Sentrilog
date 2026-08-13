@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Sentrilog Reviewer Console</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+  h1 { font-size: 1.25rem; }
+  #login { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+  #login input { flex: 1; min-width: 200px; padding: 0.4rem; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: left; font-size: 0.9rem; vertical-align: top; }
+  th { background: #f5f5f5; }
+  button { cursor: pointer; padding: 0.3rem 0.6rem; margin: 0.1rem; }
+  .decide-row { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.3rem; }
+  .decide-row input { flex: 1; min-width: 120px; }
+  #status { color: #a00; margin-bottom: 1rem; }
+  #empty { color: #666; font-style: italic; }
+</style>
+</head>
+<body>
+<h1>Sentrilog Reviewer Console</h1>
+
+<div id="login">
+  <input id="apiBase" placeholder="API base URL (e.g. http://localhost:8000)" />
+  <input id="token" placeholder="Reviewer token" type="password" />
+  <button id="connect">Connect</button>
+  <button id="refresh" disabled>Refresh</button>
+</div>
+
+<div id="status"></div>
+<div id="empty" hidden>No cases awaiting review.</div>
+<table id="queue" hidden>
+  <thead>
+    <tr>
+      <th>Subject</th>
+      <th>DOB</th>
+      <th>Risk score</th>
+      <th>Created</th>
+      <th>Claimed by</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody id="queueBody"></tbody>
+</table>
+
+<script>
+  // Deliberately minimal, dependency-free vanilla JS -- no build step, no framework, matching
+  // PLAN.md Phase 7's "list, claim, decide, done" scope. The reviewer token is kept only in
+  // memory/localStorage on this machine, sent as a Bearer token on every request; it is never
+  // sent anywhere but the API base URL the reviewer types in.
+  const state = { apiBase: '', token: '' };
+
+  const el = (id) => document.getElementById(id);
+  const statusEl = el('status');
+
+  function setStatus(message, isError) {
+    statusEl.textContent = message || '';
+    statusEl.style.color = isError ? '#a00' : '#080';
+  }
+
+  async function api(path, options) {
+    const response = await fetch(state.apiBase + path, {
+      ...options,
+      headers: {
+        Authorization: 'Bearer ' + state.token,
+        'Content-Type': 'application/json',
+        ...(options && options.headers),
+      },
+    });
+    if (!response.ok) {
+      let detail = response.statusText;
+      try {
+        const body = await response.json();
+        detail = body.detail || detail;
+      } catch (e) {
+        // response body wasn't JSON -- fall back to statusText
+      }
+      throw new Error(`${response.status}: ${detail}`);
+    }
+    if (response.status === 204) return null;
+    return response.json();
+  }
+
+  function renderQueue(cases) {
+    const body = el('queueBody');
+    body.innerHTML = '';
+    el('queue').hidden = cases.length === 0;
+    el('empty').hidden = cases.length !== 0;
+
+    for (const c of cases) {
+      const row = document.createElement('tr');
+
+      const decideRow = document.createElement('div');
+      decideRow.className = 'decide-row';
+      const justification = document.createElement('input');
+      justification.placeholder = 'justification';
+      const approveBtn = document.createElement('button');
+      approveBtn.textContent = 'Approve';
+      approveBtn.onclick = () => decide(c.case_id, 'approved', justification.value);
+      const rejectBtn = document.createElement('button');
+      rejectBtn.textContent = 'Reject';
+      rejectBtn.onclick = () => decide(c.case_id, 'rejected', justification.value);
+      const escalateBtn = document.createElement('button');
+      escalateBtn.textContent = 'Escalate';
+      escalateBtn.onclick = () => decide(c.case_id, 'escalated', justification.value);
+      decideRow.append(justification, approveBtn, rejectBtn, escalateBtn);
+
+      const claimBtn = document.createElement('button');
+      claimBtn.textContent = 'Claim';
+      claimBtn.onclick = () => claim(c.case_id);
+
+      const actionsCell = document.createElement('td');
+      actionsCell.append(claimBtn, decideRow);
+
+      row.innerHTML =
+        `<td>${escapeHtml(c.subject_name)}</td>` +
+        `<td>${c.subject_dob || ''}</td>` +
+        `<td>${c.risk_score !== null ? c.risk_score.toFixed(4) : ''}</td>` +
+        `<td>${new Date(c.created_at).toLocaleString()}</td>` +
+        `<td>${c.claimed_by_reviewer_id || ''}</td>`;
+      row.appendChild(actionsCell);
+      body.appendChild(row);
+    }
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  async function loadQueue() {
+    try {
+      const cases = await api('/review/cases');
+      renderQueue(cases);
+      setStatus(`Loaded ${cases.length} case(s) awaiting review.`, false);
+    } catch (err) {
+      setStatus('Failed to load queue: ' + err.message, true);
+    }
+  }
+
+  async function claim(caseId) {
+    try {
+      await api(`/review/cases/${caseId}/claim`, { method: 'POST' });
+      setStatus('Claimed case ' + caseId, false);
+      await loadQueue();
+    } catch (err) {
+      setStatus('Failed to claim: ' + err.message, true);
+    }
+  }
+
+  async function decide(caseId, decision, justification) {
+    if (!justification) {
+      setStatus('Justification is required before submitting a decision.', true);
+      return;
+    }
+    try {
+      await api(`/review/cases/${caseId}/decision`, {
+        method: 'POST',
+        body: JSON.stringify({ decision, justification }),
+      });
+      setStatus(`Recorded "${decision}" for case ${caseId}.`, false);
+      await loadQueue();
+    } catch (err) {
+      setStatus('Failed to submit decision: ' + err.message, true);
+    }
+  }
+
+  el('connect').addEventListener('click', () => {
+    state.apiBase = el('apiBase').value.replace(/\/$/, '');
+    state.token = el('token').value;
+    if (!state.apiBase || !state.token) {
+      setStatus('API base URL and reviewer token are both required.', true);
+      return;
+    }
+    localStorage.setItem('sentrilog_api_base', state.apiBase);
+    localStorage.setItem('sentrilog_reviewer_token', state.token);
+    el('refresh').disabled = false;
+    loadQueue();
+  });
+
+  el('refresh').addEventListener('click', loadQueue);
+
+  window.addEventListener('DOMContentLoaded', () => {
+    const savedBase = localStorage.getItem('sentrilog_api_base');
+    const savedToken = localStorage.getItem('sentrilog_reviewer_token');
+    if (savedBase) el('apiBase').value = savedBase;
+    if (savedToken) el('token').value = savedToken;
+  });
+</script>
+</body>
+</html>

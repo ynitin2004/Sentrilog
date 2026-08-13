@@ -1,7 +1,11 @@
 import asyncio
+import hashlib
+import hmac
+import json
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import httpx
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
@@ -10,6 +14,7 @@ from ..config import settings
 from ..extraction.extract import extract_id_document
 from ..extraction.vlm import GeminiVLMClient
 from ..face_match import FaceMatchClient, InsightFaceClient, NoFaceDetectedError
+from ..risk_scoring import RiskInputs, assess_risk
 
 if TYPE_CHECKING:
     # Only for the type hint on the module-level cache below -- the real import is deferred to
@@ -85,6 +90,53 @@ class UpdateCaseStatusInput:
     tenant_id: str
     case_id: str
     status: str
+
+
+@dataclass
+class RiskScoreInput:
+    tenant_id: str
+    case_id: str
+    extraction_confidence: float
+    face_match_score: float | None
+    sanctions_hit_count: int
+
+
+@dataclass
+class RiskScoreOutput:
+    risk_score: float
+    needs_review: bool
+    reason: str | None
+
+
+@dataclass
+class FinalizeCaseInput:
+    tenant_id: str
+    case_id: str
+    status: str
+    decision: str | None
+
+
+@dataclass
+class DeliverWebhooksInput:
+    tenant_id: str
+    case_id: str
+    event_type: str
+    decision: str | None
+    risk_score: float | None
+
+
+@dataclass
+class DeliverWebhooksOutput:
+    delivered_count: int
+    failed_count: int
+
+
+# Delivery attempts per registered webhook, tried synchronously inside the activity with a
+# short backoff -- deliberately not relying on Temporal's own activity-level retry for this,
+# since retrying the whole activity would re-deliver to webhooks that already succeeded on an
+# earlier attempt (webhook_deliveries rows aren't upserted/deduplicated).
+_WEBHOOK_MAX_ATTEMPTS = 3
+_WEBHOOK_RETRY_BACKOFF_SECONDS = 1.0
 
 
 _vlm_client = GeminiVLMClient(api_key=settings.gemini_api_key, model=settings.gemini_model)
@@ -230,3 +282,106 @@ async def update_case_status_activity(input: UpdateCaseStatusInput) -> None:
         await conn.execute(
             "UPDATE cases SET status = $1 WHERE id = $2", input.status, input.case_id
         )
+
+
+@activity.defn
+async def risk_score_activity(input: RiskScoreInput) -> RiskScoreOutput:
+    assessment = assess_risk(
+        RiskInputs(
+            extraction_confidence=input.extraction_confidence,
+            face_match_score=input.face_match_score,
+            sanctions_hit_count=input.sanctions_hit_count,
+        )
+    )
+    async with db.tenant_connection(input.tenant_id) as conn:
+        await conn.execute(
+            "UPDATE cases SET risk_score = $1 WHERE id = $2",
+            assessment.risk_score,
+            input.case_id,
+        )
+    return RiskScoreOutput(
+        risk_score=assessment.risk_score,
+        needs_review=assessment.needs_review,
+        reason=assessment.reason,
+    )
+
+
+@activity.defn
+async def finalize_case_activity(input: FinalizeCaseInput) -> None:
+    async with db.tenant_connection(input.tenant_id) as conn:
+        await conn.execute(
+            "UPDATE cases SET status = $1, decision = $2, decided_at = now() WHERE id = $3",
+            input.status,
+            input.decision,
+            input.case_id,
+        )
+
+
+@activity.defn
+async def deliver_webhooks_activity(input: DeliverWebhooksInput) -> DeliverWebhooksOutput:
+    async with db.tenant_connection(input.tenant_id) as conn:
+        webhooks = await conn.fetch(
+            "SELECT id, url, secret FROM webhooks WHERE tenant_id = $1 AND disabled_at IS NULL",
+            input.tenant_id,
+        )
+
+    if not webhooks:
+        # Not every tenant registers a webhook -- nothing to deliver isn't a failure.
+        return DeliverWebhooksOutput(delivered_count=0, failed_count=0)
+
+    payload_json = json.dumps(
+        {
+            "event": input.event_type,
+            "case_id": input.case_id,
+            "decision": input.decision,
+            "risk_score": input.risk_score,
+        },
+        sort_keys=True,
+    )
+    body = payload_json.encode("utf-8")
+
+    delivered_count = 0
+    failed_count = 0
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        for webhook in webhooks:
+            signature = hmac.new(
+                webhook["secret"].encode("utf-8"), body, hashlib.sha256
+            ).hexdigest()
+
+            success = False
+            attempts = 0
+            for attempts in range(1, _WEBHOOK_MAX_ATTEMPTS + 1):
+                try:
+                    response = await client.post(
+                        webhook["url"],
+                        content=body,
+                        headers={
+                            "Content-Type": "application/json",
+                            "X-Sentrilog-Signature": signature,
+                        },
+                    )
+                    response.raise_for_status()
+                    success = True
+                    break
+                except httpx.HTTPError:
+                    if attempts < _WEBHOOK_MAX_ATTEMPTS:
+                        await asyncio.sleep(_WEBHOOK_RETRY_BACKOFF_SECONDS * attempts)
+
+            delivered_count += 1 if success else 0
+            failed_count += 0 if success else 1
+
+            async with db.tenant_connection(input.tenant_id) as conn:
+                await conn.execute(
+                    "INSERT INTO webhook_deliveries (tenant_id, webhook_id, case_id, "
+                    "event_type, payload, status, attempt_count, last_attempted_at) "
+                    "VALUES ($1, $2, $3, $4, $5, $6, $7, now())",
+                    input.tenant_id,
+                    webhook["id"],
+                    input.case_id,
+                    input.event_type,
+                    payload_json,
+                    "delivered" if success else "failed",
+                    attempts,
+                )
+
+    return DeliverWebhooksOutput(delivered_count=delivered_count, failed_count=failed_count)

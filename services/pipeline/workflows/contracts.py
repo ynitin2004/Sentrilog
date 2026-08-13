@@ -18,6 +18,11 @@ from dataclasses import dataclass
 # across files.
 KYC_CASE_WORKFLOW_NAME = "KycCaseWorkflow"
 
+# Same reasoning for the review-decision signal: services/intake signals a running workflow by
+# string name (Client.get_workflow_handle(...).signal(name, payload)) without ever importing
+# kyc_case.py, so the name has to live somewhere both sides can import cheaply.
+SUBMIT_REVIEW_DECISION_SIGNAL_NAME = "submit_review_decision"
+
 
 @dataclass
 class KycCaseInput:
@@ -33,3 +38,11 @@ class KycCaseResult:
     reason: str | None = None
     face_match_score: float | None = None
     sanctions_hit_count: int | None = None
+    risk_score: float | None = None
+
+
+@dataclass
+class ReviewDecisionSignal:
+    reviewer_id: str
+    decision: str  # 'approved' | 'rejected' | 'escalated'
+    justification: str
