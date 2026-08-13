@@ -246,7 +246,7 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 | 4. Extraction | **Done** | `v0.4.0` | `ed00d1c` | 2026-08-06 |
 | 5. Temporal wiring | **Done** | `v0.5.0` | `b904547` | 2026-08-11 |
 | 6. Face match + screening | **Done** | `v0.6.0` | `565fd8d` | 2026-08-12 |
-| 7. Risk scoring + review queue | **Done** | `v0.7.0` | *(pending)* | 2026-08-13 |
+| 7. Risk scoring + review queue | **Done** | `v0.7.0` | `eb3b334` | 2026-08-13 |
 | 8. Audit trail | Not started | — | — | — |
 | 9. Hardening | Not started | — | — | — |
 | 10. AWS infra + deploy | Not started | — | — | — |
@@ -424,7 +424,7 @@ Closes the multi-tenancy gap flagged above, before any Phase 3 code depends on t
 - **Known gap (explicit, not silent):** the sample sanctions list (`data.py`) is 10 clearly-synthetic entries, not the real OFAC SDN or UN Consolidated list — matches PLAN.md's own "sample OFAC/UN list" framing for this phase; real feed ingestion (and keeping it current) is Phase 9/10 work.
 - **Known gap (explicit, not silent):** final case-decisioning logic (`needs_review` vs. `processing`) is a simple any-red-flag rule, not the actual risk-scoring model — correct and sufficient for this phase's scope, but Phase 7 replaces it with real weighted risk scoring, not just extends it.
 
-### Phase 7 — 2026-08-13 (`v0.7.0`, commit *(pending)*)
+### Phase 7 — 2026-08-13 (`v0.7.0`, commit `eb3b334`)
 
 **Design decisions made while implementing this (not all pre-specified in §9):**
 
