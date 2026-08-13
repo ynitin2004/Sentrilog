@@ -2253,6 +2253,7 @@ dependencies = [
     { name = "easyocr" },
     { name = "fastapi" },
     { name = "google-genai" },
+    { name = "httpx" },
     { name = "insightface" },
     { name = "metaphone" },
     { name = "onnxruntime" },
@@ -2267,7 +2268,6 @@ dependencies = [
 dev = [
     { name = "black" },
     { name = "boto3-stubs", extra = ["s3"] },
-    { name = "httpx" },
     { name = "mypy" },
     { name = "pre-commit" },
     { name = "pytest" },
@@ -2282,6 +2282,7 @@ requires-dist = [
     { name = "easyocr", specifier = ">=1.7.2" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "google-genai", specifier = ">=1.0.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
     { name = "insightface", specifier = ">=0.7.3" },
     { name = "metaphone", specifier = ">=0.6" },
     { name = "onnxruntime", specifier = ">=1.19.0" },
@@ -2296,7 +2297,6 @@ requires-dist = [
 dev = [
     { name = "black", specifier = ">=24.10.0" },
     { name = "boto3-stubs", extras = ["s3"], specifier = ">=1.35.0" },
-    { name = "httpx", specifier = ">=0.27.0" },
     { name = "mypy", specifier = ">=1.13.0" },
     { name = "pre-commit", specifier = ">=4.0.0" },
     { name = "pytest", specifier = ">=8.3.0" },
