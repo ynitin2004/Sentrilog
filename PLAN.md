@@ -79,7 +79,7 @@ audit_log(id, tenant_id, case_id, event_type, actor, model_version, input_hash, 
 
 **This is a schema change on top of what Phase 2 already shipped** (which had no tenant concept). It needs to land as its own migration at the start of Phase 3, before the intake API writes a single row against the old shape — see the updated Phase 3 scope in §9.
 
-## 5. Infrastructure (AWS — deferred to Phase 10)
+## 5. Infrastructure (AWS — deferred to Phase 13)
 
 | Concern | Choice | Why |
 |---|---|---|
@@ -107,7 +107,7 @@ IaC: Terraform, module-per-layer (`network/`, `data/`, `compute/`, `security/`),
 5. **Client auth mechanism** — simple per-tenant API keys (fast to ship) vs. OAuth2 client-credentials (more standard for enterprise clients, better rotation/revocation semantics). Affects Phase 3.
 6. **Reviewer authentication** — plain username/password vs. SSO (Okta/Azure AD/etc.) — depends on whether reviewers are your own staff, each client's staff, or both. Affects Phase 7.
 7. **Plan tiers & rate limits** — flat throughput for every tenant, or tiered quotas (e.g. free/pro/enterprise) from day one? Cheap to decide now, awkward to retrofit onto live client integrations later.
-8. **Data residency** — does any prospective client require EU-only or single-region data storage? Determines whether Phase 10 is single-region AWS or needs a per-region deployment topology.
+8. **Data residency** — does any prospective client require EU-only or single-region data storage? Determines whether Phase 13 is single-region AWS or needs a per-region deployment topology.
 
 ## 7. Multi-tenant & multi-user product requirements
 
@@ -116,12 +116,12 @@ The original design proved the hard technical problems (VLM extraction, fuzzy sc
 - **Tenancy model:** shared database, `tenant_id` denormalized onto every table (not just joined through `cases`), enforced by **Postgres row-level security policies** as defense-in-depth on top of app-layer scoping. No schema-per-tenant or sharding — premature at this stage, and a shared-DB-with-RLS model is what every table in §4 is already designed around. Revisit only if a specific client's data-residency requirement (§6.8) forces isolation a shared DB can't provide.
 - **Client authentication:** per-tenant API keys, hashed at rest (`api_keys.key_hash`), never logged or returned after creation. Every request resolves to a `tenant_id` before touching any other table.
 - **Idempotency:** a client-supplied `Idempotency-Key` (or auto-generated equivalent) on case creation, enforced via `UNIQUE (tenant_id, idempotency_key)`. Network retries from a client's integration are a certainty, not an edge case, and must not create duplicate cases.
-- **Rate limiting & quotas:** per-tenant, enforced both in-app (Phase 3) and at the infrastructure edge (Phase 10, §5) — app-layer alone can't protect against a client that overwhelms the load balancer before a request ever reaches application code.
-- **Noisy-neighbor isolation:** Temporal task-queue routing keyed by tenant/plan tier (Phase 5), so one tenant's case backlog can't starve another's SLA. Verified under load in Phase 9, not assumed from the design.
-- **Reviewer access control:** reviewers belong to a tenant with a role (`reviewer`, `admin`, `auditor`); `review_decisions.reviewer_id` is a real foreign key, not free text. A reviewer must never be able to list or decide another tenant's cases — this gets an explicit authorization test, not just a schema constraint (Phase 9).
-- **Reviewer UI:** a minimal web console (list/claim/decide the queue), not just an API. Without it, "many reviewers across many client organizations" isn't actually usable — this was previously scoped out of Phase 7 as "a separate concern"; it isn't anymore. Kept deliberately small (Phase 7): list, claim, decide, done — a fuller console is a later iteration, not a Phase 7 blocker.
+- **Rate limiting & quotas:** per-tenant, enforced both in-app (Phase 3) and at the infrastructure edge (Phase 13, §5) — app-layer alone can't protect against a client that overwhelms the load balancer before a request ever reaches application code.
+- **Noisy-neighbor isolation:** Temporal task-queue routing keyed by tenant/plan tier (Phase 5), so one tenant's case backlog can't starve another's SLA. Verified under load in Phase 12, not assumed from the design.
+- **Reviewer access control:** reviewers belong to a tenant with a role (`reviewer`, `admin`, `auditor`); `review_decisions.reviewer_id` is a real foreign key, not free text. A reviewer must never be able to list or decide another tenant's cases — this gets an explicit authorization test, not just a schema constraint (Phase 12).
+- **Reviewer UI:** a minimal web console (list/claim/decide the queue), not just an API. Without it, "many reviewers across many client organizations" isn't actually usable — this was previously scoped out of Phase 7 as "a separate concern"; it isn't anymore. Kept deliberately small in Phase 7 itself (`webui/reviewer.html`: list, claim, decide, done) — the fuller console (reviewer + tenant/admin) is now scheduled as Phases 8-10.
 - **Client notifications:** webhook delivery on case decision (`webhooks` + `webhook_deliveries`), with retry and a recorded failure state — an async, potentially multi-day pipeline is unusable for integrators if the only way to know a case resolved is to poll.
-- **Observability at the tenant level:** metrics and dashboards taggable by `tenant_id` (Phase 10), so a single degraded or abusive tenant is visible instead of averaged into fleet-wide numbers.
+- **Observability at the tenant level:** metrics and dashboards taggable by `tenant_id` (Phase 13), so a single degraded or abusive tenant is visible instead of averaged into fleet-wide numbers.
 
 **Deliberately out of scope for now** (would be over-engineering ahead of an actual need): schema-per-tenant/sharded Postgres, per-tenant configurable risk-scoring thresholds, a full-featured reviewer console (bulk actions, saved views, SLA reporting UI), and SSO — none of these are required to prove the product works for multiple tenants, and adding them now would be designing for hypothetical requirements rather than the ones in front of us. Revisit if a specific client asks.
 
@@ -138,9 +138,11 @@ The original design proved the hard technical problems (VLM extraction, fuzzy sc
 
 **Resolved:** **Sentrilog** (confirmed 2026-07-20, Phase 1).
 
-## 9. Delivery plan — 10 phases
+## 9. Delivery plan — 13 phases
 
-Phases 1-9 build and prove the system locally (Docker Compose standing in for S3/RDS/Qdrant). AWS is touched only in Phase 10, so cloud debugging and logic debugging never happen at the same time.
+Phases 1-12 build and prove the system locally (Docker Compose standing in for S3/RDS/Qdrant). AWS is touched only in Phase 13, so cloud debugging and logic debugging never happen at the same time.
+
+Phases 8-10 were inserted 2026-08-14, after Phase 7 shipped, to replace `webui/reviewer.html`'s deliberately minimal single-file console (explicitly flagged in §7 as "a later iteration, not a Phase 7 blocker") with a full React+TypeScript frontend — both the reviewer console and a tenant/admin console (API keys, webhooks, reviewers, case dashboard). Original Phases 8/9/10 (audit trail, hardening, AWS deploy) shifted to 11/12/13; nothing had shipped under those numbers yet, so the renumbering costs nothing.
 
 **Workflow convention for every phase:**
 - Branch per phase: `phase-N-<short-name>`, PR into `main`.
@@ -157,7 +159,7 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 - **Regression check** — re-run the previous phase's test suite, not just the new phase's; nothing earlier should silently break.
 - **Static checks green**: lint (`ruff`), formatting (`black --check`), types (`mypy`), and `pre-commit run --all-files` all pass with zero suppressions added to make them pass.
 - **Test evidence recorded**: what was tested and the result gets a short note in the Changelog entry for that phase — not just "tests pass," but *which* scenarios were exercised, so a reviewer six months from now can tell what's actually covered.
-- Anything skipped (e.g., load testing deferred to Phase 9) is stated explicitly as a known gap, not silently omitted.
+- Anything skipped (e.g., load testing deferred to Phase 12) is stated explicitly as a known gap, not silently omitted.
 
 ### Phase 1 — Repo & project scaffolding
 - `git init`, connect remote to `github.com/ynitin2004/Sentrilog`, `.gitignore`, `README.md` (problem statement + architecture diagram). No `LICENSE` file for now (decision: skip, revisit later).
@@ -180,7 +182,7 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 - Idempotency: `Idempotency-Key` support backed by `UNIQUE (tenant_id, idempotency_key)` — a retried request must not create a duplicate case.
 - Per-tenant rate limiting middleware (429 + `Retry-After` on breach).
 - File validation: content-type/size checks, with a malware-scan hook defined even if its implementation is a stub for now — the interface needs to exist before real client-uploaded files flow through it.
-- Encryption on MinIO (or explicitly note deferral to real KMS in Phase 10).
+- Encryption on MinIO (or explicitly note deferral to real KMS in Phase 13).
 - Integration tests: upload flow succeeds and is correctly tenant-scoped; a duplicate idempotency key does not create a second case; tenant A's API key cannot read or reference tenant B's case.
 - **Exit criteria:** curl/Postman flow uploads a file with a valid API key; case row has the correct S3 key and `tenant_id`; a repeated request with the same idempotency key is a no-op; cross-tenant access is proven to fail, not just assumed to.
 
@@ -194,7 +196,7 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 
 ### Phase 5 — Temporal workflow wiring *(scope updated for multi-tenancy — see §7)*
 - `kyc_case` workflow calls extraction as a Temporal activity; retry policy at the Temporal level.
-- Design (not yet load-tested — that's Phase 9) task-queue routing keyed by tenant/plan tier, so the mechanism for preventing one tenant's backlog from starving another's is in place from the start rather than bolted on after a real incident.
+- Design (not yet load-tested — that's Phase 12) task-queue routing keyed by tenant/plan tier, so the mechanism for preventing one tenant's backlog from starving another's is in place from the start rather than bolted on after a real incident.
 - **Exit criteria:** kill the worker mid-run, restart it, workflow resumes without losing progress.
 
 ### Phase 6 — Face match + sanctions screening (parallel) *(open decision resolved — see §11)*
@@ -211,13 +213,32 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 - Workflow signal handler unblocks on reviewer submission.
 - **Exit criteria:** an ambiguous test case parks in the queue, a reviewer decides it via the UI, the workflow completes, and a webhook delivery is recorded; a reviewer from a different tenant cannot see or act on the case.
 
-### Phase 8 — Immutable audit trail
+### Phase 8 — Frontend Foundation & Design System *(new — see §9 intro note)*
+- New `frontend/` app: Vite + React 18 + TypeScript (strict) + React Router v6 + Tailwind CSS + Radix primitives (shadcn/ui pattern); ESLint + Prettier as the TS equivalent of `ruff`+`black`.
+- Design tokens as Tailwind config — the Figma-portable implementation of a design system.
+- Component library: `StatusBadge`, `RiskScoreGauge`, `CaseTable`/`CaseCard`, `DecisionPanel`, `DocumentPreview`, `Toast`, `EmptyState`, `LoadingSkeleton`, `Modal`, `AppShell`, `DataTable`, `AuthGuard`, `StatCard`, `Chart`, `CreateKeyModal` (one-time raw-key reveal), `WebhookForm`, `DeliveryLogTable`, `RoleBadge`.
+- Every screen built against mock/fixture data (MSW or static fixtures), zero real network calls: reviewer side (Connect, Queue Dashboard, Case Detail) and tenant/admin side (Overview Dashboard, Cases list, API Keys, Webhooks, Reviewers).
+- Storybook for isolated component development/demo.
+- **Exit criteria:** every screen navigable end-to-end on mock data; component library demoable in isolation; passes an automated accessibility check (axe); responsive at mobile/tablet/desktop breakpoints.
+
+### Phase 9 — Backend Endpoints + Frontend Integration *(new — see §9 intro note)*
+- New backend endpoints (`services/intake`), RLS-scoped, no schema migration needed (every table already has the required columns): `POST/GET /api-keys` + revoke, `POST/GET /webhooks` + disable + `GET .../deliveries`, `POST/GET /reviewers` + revoke, `GET /cases` (tenant-wide, filterable — distinct from the existing queue-only `/review/cases`), `GET /dashboard/summary`.
+- Each new endpoint gets the same cross-tenant-isolation test treatment as every existing one — this is exactly the surface where a leak would be worst.
+- Frontend: mocks replaced with real TanStack Query hooks per endpoint, real auth, real error states (401/404/409/422/429), optimistic claim/decide with rollback. TS types generated from `/openapi.json` — one source of truth, no hand-duplicated types.
+- **Exit criteria:** the Phase 7 reviewer flow (park → claim → decide → workflow completes) runs entirely through the new UI, proven by Playwright against the real running stack; a real admin flow (create an API key through the UI, use it to create a case via curl, see it on the dashboard; register a webhook, decide a case, see the delivery in the log viewer) also proven.
+
+### Phase 10 — Real-Time (SSE) & Production Hardening *(new — see §9 intro note)*
+- Backend: `finalize_case_activity`/`update_case_status_activity`/the claim endpoint each call `pg_notify('case_events', ...)` on top of their existing writes (no new broker dependency — Postgres, which the project already depends on, does this natively); new tenant-scoped `GET /events/stream` SSE endpoint holding a dedicated `LISTEN` connection.
+- Frontend: `fetch`-based SSE client (not native `EventSource`, which can't send an `Authorization` header) with reconnect/backoff handling; live-updating queue/dashboard, no polling; graceful UI handling of concurrent-reviewer races; accessibility to WCAG AA; performance pass (code splitting, virtualized lists); `frontend` service added to `docker-compose.yml`.
+- **Exit criteria:** two browser sessions open side by side — deciding a case in one makes it disappear from the other's queue in real time with no manual refresh; SSE reconnects cleanly after a simulated network drop; Lighthouse + axe both pass; `docker compose up` serves the frontend too.
+
+### Phase 11 — Immutable audit trail
 - `audit_log` with `prev_row_hash`/`row_hash` chaining; `INSERT`-only DB grants.
 - Retrofit: every prior-phase activity now writes audit rows on entry/exit.
 - Verification script walks the hash chain to detect tampering.
 - **Exit criteria:** manually editing a historical row breaks the chain-verification script.
 
-### Phase 9 — Hardening: security, observability, tests *(scope updated for multi-tenancy — see §7)*
+### Phase 12 — Hardening: security, observability, tests *(scope updated for multi-tenancy — see §7)*
 - Structured logging + OpenTelemetry tracing.
 - Load test the extraction stage specifically (bottleneck/cost center).
 - **Noisy-neighbor load test:** one tenant submitting a heavy burst of cases must not blow another tenant's SLA — validates the Phase 5 task-queue-routing design under real load, not just in theory.
@@ -227,7 +248,7 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 - Secrets moved out of `.env` into a pattern mirroring Secrets Manager.
 - **Exit criteria:** documented, tested runbooks for "worker died mid-case" and "Qdrant unavailable"; the noisy-neighbor and cross-tenant-access tests both pass with recorded evidence.
 
-### Phase 10 — AWS infra + deploy *(scope updated for multi-tenancy — see §5)*
+### Phase 13 — AWS infra + deploy *(scope updated for multi-tenancy — see §5)*
 - Terraform modules: network, RDS (+ RDS Proxy), S3 (KMS), Qdrant, Temporal per decisions made.
 - API Gateway or ALB + WAF in front of the intake API, with per-tenant/per-key rate limiting enforced at the edge.
 - Autoscaling policies for the intake API and Temporal worker pools (CPU/queue-depth driven).
@@ -247,9 +268,12 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 | 5. Temporal wiring | **Done** | `v0.5.0` | `b904547` | 2026-08-11 |
 | 6. Face match + screening | **Done** | `v0.6.0` | `565fd8d` | 2026-08-12 |
 | 7. Risk scoring + review queue | **Done** (incl. v0.7.1 amendment) | `v0.7.1` | `eb3b334` | 2026-08-13 |
-| 8. Audit trail | Not started | — | — | — |
-| 9. Hardening | Not started | — | — | — |
-| 10. AWS infra + deploy | Not started | — | — | — |
+| 8. Frontend foundation & design system | Not started | — | — | — |
+| 9. Backend endpoints + frontend integration | Not started | — | — | — |
+| 10. Real-time (SSE) & production hardening | Not started | — | — | — |
+| 11. Audit trail | Not started | — | — | — |
+| 12. Hardening | Not started | — | — | — |
+| 13. AWS infra + deploy | Not started | — | — | — |
 
 ## 11. Changelog
 
@@ -277,7 +301,7 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 
 - `docker-compose.yml`: Postgres 16, Qdrant, MinIO (+ a one-shot `minio-init` job that creates and versions the `sentrilog-documents` bucket), Temporal (`auto-setup`, sharing the Postgres instance via its own `temporal`/`temporal_visibility` databases), and Temporal UI — added ahead of schedule since Phase 5 needs it and it's free to include now.
 - `infra/docker/postgres-init/001_schema.sql`: all 7 core tables from the data model (§4), with a schema refinement — added a `row_hash` column to `audit_log` alongside `prev_row_hash`, since a hash chain requires each row to store its own computed hash for the next row to reference; the original sketch only listed `prev_row_hash`, which wasn't actually enough to build a chain from.
-- Status/method/decision fields use `TEXT` + `CHECK` constraints rather than native Postgres `ENUM` types, to avoid `ALTER TYPE` friction while the schema is still moving pre-Phase 8.
+- Status/method/decision fields use `TEXT` + `CHECK` constraints rather than native Postgres `ENUM` types, to avoid `ALTER TYPE` friction while the schema is still moving pre-Phase 11.
 - `Makefile` with `up`/`down`/`reset`/`ps`/`logs`/`psql` targets. `up` uses `docker compose up -d --wait`, which blocks and fails fast rather than reporting false-positive success on a container that's merely "running" but not yet healthy.
 
 **Testing evidence (senior-engineer standard, per §9):**
@@ -299,7 +323,7 @@ Closes the multi-tenancy gap flagged above, before any Phase 3 code depends on t
 
 - `infra/docker/postgres-init/002_multi_tenancy.sql`: adds `tenants`, `api_keys`, `reviewers`, `webhooks`, `webhook_deliveries`; denormalizes `tenant_id` onto every existing table; adds `UNIQUE (tenant_id, idempotency_key)` on `cases`; converts `review_decisions.reviewer_id` from free-text to a real FK into `reviewers`.
 - Enables Postgres row-level security on every tenant-scoped table, `FORCE`d so table owners don't silently bypass it.
-- **Design correction found while implementing this, not before:** `POSTGRES_USER` (`sentrilog`) is a superuser, and RLS is *always* bypassed for superusers and table owners regardless of `FORCE ROW LEVEL SECURITY` — no override exists. That means the app can never connect as `sentrilog` and have RLS do anything. Added a separate, unprivileged `sentrilog_app` role with explicit per-table grants (`SELECT`/`INSERT`/`UPDATE`; `audit_log` gets `INSERT` only, foreshadowing the full lockdown in Phase 8) for the application to connect as instead.
+- **Design correction found while implementing this, not before:** `POSTGRES_USER` (`sentrilog`) is a superuser, and RLS is *always* bypassed for superusers and table owners regardless of `FORCE ROW LEVEL SECURITY` — no override exists. That means the app can never connect as `sentrilog` and have RLS do anything. Added a separate, unprivileged `sentrilog_app` role with explicit per-table grants (`SELECT`/`INSERT`/`UPDATE`; `audit_log` gets `INSERT` only, foreshadowing the full lockdown in Phase 11) for the application to connect as instead.
 - Both migration files (`001`, `002`) now run together in order on any fresh volume via `docker-entrypoint-initdb.d`'s filename-ordered execution — no separate manual step for new environments.
 
 **Testing evidence (senior-engineer standard, per §9) — this is the part that actually matters for a security control:**
@@ -339,7 +363,7 @@ Closes the multi-tenancy gap flagged above, before any Phase 3 code depends on t
 - **Rate limiting proven under real load, not configured and assumed:** 65 rapid requests against a 60/60s limit returned `200` exactly 60 times then `429` for the remaining 5, with a `Retry-After` header present.
 - **14 automated integration tests** (`tests/intake/test_cases.py`) against the live Postgres/MinIO stack (no mocking) covering: tenant-scoped upload targets, idempotency replay, idempotency scoped per-tenant (not global — the one test that would catch a regression to a global uniqueness constraint), real presigned-URL upload, cross-tenant 404, missing/invalid auth, malformed case IDs including a SQL-injection-shaped string (never 500s), oversized/invalid-content-type rejection, and the rate limiter.
 - **Regression check:** Phase 1 scaffold test and all Phase 1/2 static checks (`ruff`, `black --check`, `mypy`, `pre-commit run --all-files`) re-run clean after all Phase 3 changes.
-- **Known gap (explicit, not silent):** the rate limiter is in-process/in-memory — correct for one uvicorn worker, but each additional replica gets an independent counter, so real enforcement doesn't hold under multi-replica deployment. Documented in `ratelimit.py`; the actual fix is edge-level rate limiting in Phase 10 (§5), which was already the plan before this was ever a gap.
+- **Known gap (explicit, not silent):** the rate limiter is in-process/in-memory — correct for one uvicorn worker, but each additional replica gets an independent counter, so real enforcement doesn't hold under multi-replica deployment. Documented in `ratelimit.py`; the actual fix is edge-level rate limiting in Phase 13 (§5), which was already the plan before this was ever a gap.
 - **Known gap (explicit, not silent):** malware scanning (`scanning.scan_for_malware`) is a stub that always returns clean — the call site and pipeline position exist now, per Phase 3 scope, but no real scanner is wired up yet.
 
 ### Phase 4 — 2026-08-06 (`v0.4.0`, commit `ed00d1c`)
@@ -375,7 +399,7 @@ Closes the multi-tenancy gap flagged above, before any Phase 3 code depends on t
 **Done:**
 
 - `services/pipeline/ocr.py`: closes Phase 4's known gap — an EasyOCR-based reader that crops the bottom of a document image, detects text lines, and assembles the two candidate MRZ lines (ordered top-to-bottom by bounding box, not detection order). Deliberately approximate: any OCR misread is caught downstream by `mrz.parse_td3()`'s checksum validation, which is the actual safety net, not this module's line-detection heuristics.
-- `services/pipeline/workflows/`: `contracts.py` (plain `KycCaseInput`/`KycCaseResult` dataclasses, no heavy imports — see bug #3 below for why this exists as its own module), `activities.py` (`fetch_id_document_activity`, `extract_document_activity`, `update_case_status_activity`), `kyc_case.py` (`KycCaseWorkflow`: MRZ-first via Phase 4's `extract_id_document`, retry policy at the Temporal level distinct from `extract.py`'s own bounded VLM retry — Temporal retry handles worker death/network blips/"client hasn't uploaded yet," VLM retry handles "the model got it wrong"), `task_queues.py` (task-queue-per-plan-tier routing — design only, per this phase's stated scope; load-testing that it actually isolates load is Phase 9), `worker.py` (polls all three plan-tier queues concurrently for local dev).
+- `services/pipeline/workflows/`: `contracts.py` (plain `KycCaseInput`/`KycCaseResult` dataclasses, no heavy imports — see bug #3 below for why this exists as its own module), `activities.py` (`fetch_id_document_activity`, `extract_document_activity`, `update_case_status_activity`), `kyc_case.py` (`KycCaseWorkflow`: MRZ-first via Phase 4's `extract_id_document`, retry policy at the Temporal level distinct from `extract.py`'s own bounded VLM retry — Temporal retry handles worker death/network blips/"client hasn't uploaded yet," VLM retry handles "the model got it wrong"), `task_queues.py` (task-queue-per-plan-tier routing — design only, per this phase's stated scope; load-testing that it actually isolates load is Phase 12), `worker.py` (polls all three plan-tier queues concurrently for local dev).
 - `services/intake/temporal.py`: starts the workflow when a case is created, by **string workflow-type name** rather than importing the workflow class (see bug #3). Idempotent on `case_id` — a deterministic workflow ID means replays/retries don't double-start anything, just hit `WorkflowAlreadyStartedError`, caught and treated as a no-op.
 - `services/pipeline/db.py`, `services/pipeline/storage.py`: same RLS-safe `set_config`-based tenant connection pattern and S3 client pattern as the intake service, for the pipeline side.
 
@@ -392,8 +416,8 @@ Closes the multi-tenancy gap flagged above, before any Phase 3 code depends on t
 - **10 automated workflow control-flow tests** (`test_kyc_case_workflow.py`) against the real dev Temporal server with fake activities swapped in by name — no-document-found, fetch-activity hard failure (the bug-#1 regression test), successful extraction, low-confidence extraction, extraction hard failure, and a direct proof of the `WorkflowAlreadyStartedError` idempotency guarantee the intake integration depends on. Plus 5 unit tests for `ocr.py`'s pure line-assembly logic (bottom-two-lines ordering, junk-text filtering, pad/truncate to 44 chars, fewer-than-two/zero detections) — no EasyOCR/torch needed for these, only fabricated bounding-box data.
 - **One full real end-to-end run, not just component-level tests**: seeded a real tenant, started the real intake API and the real production worker (both current code, post-refactor), created a case through the real `POST /cases`, uploaded a real synthetic image to the real presigned URL, and watched it flow entirely on its own — the workflow started before the upload finished and correctly retried ("document not yet uploaded") until the file appeared, then a real EasyOCR pass (models downloaded on first use), a real Gemini call (confirmed via the `200 OK` in the worker's logs), a row correctly written to `extractions` (`confidence=1.0`, every field matching what was drawn on the synthetic image), and the case's status correctly transitioning `pending` → `processing`. All test tenants/cases/objects cleaned up afterward (Postgres rows and the MinIO object) — confirmed zero leftover tenants after.
 - **Full regression**: all 43 tests across every phase to date (Phase 3's intake integration tests, Phase 4's extraction/MRZ tests, and this phase's new OCR and workflow tests) plus `ruff`, `black --check`, `mypy`, `pre-commit run --all-files` clean.
-- **Known gap (explicit, not silent):** the "client hasn't uploaded yet" retry path relies entirely on Temporal's own retry/backoff with no `heartbeat_timeout` configured on the fetch/extraction activities — a dead worker is only detected once the configured `start_to_close_timeout` elapses (30s / 5min respectively), not sooner. Fine for this phase's exit criteria (proven above); tightening this with explicit heartbeating is a Phase 9 hardening concern if faster failure detection turns out to matter in practice.
-- **Known gap (explicit, not silent):** starting the workflow in `services/intake/main.py` happens *after* the DB transaction commits, as a separate, non-transactional step — if it fails, the case row exists with no workflow driving it forward. `start_kyc_case_workflow` is idempotent so a client retry recovers cleanly, but there's no automatic recovery for a client that never retries. A transactional-outbox pattern would close this properly; not built here, flagged for Phase 9/10.
+- **Known gap (explicit, not silent):** the "client hasn't uploaded yet" retry path relies entirely on Temporal's own retry/backoff with no `heartbeat_timeout` configured on the fetch/extraction activities — a dead worker is only detected once the configured `start_to_close_timeout` elapses (30s / 5min respectively), not sooner. Fine for this phase's exit criteria (proven above); tightening this with explicit heartbeating is a Phase 12 hardening concern if faster failure detection turns out to matter in practice.
+- **Known gap (explicit, not silent):** starting the workflow in `services/intake/main.py` happens *after* the DB transaction commits, as a separate, non-transactional step — if it fails, the case row exists with no workflow driving it forward. `start_kyc_case_workflow` is idempotent so a client retry recovers cleanly, but there's no automatic recovery for a client that never retries. A transactional-outbox pattern would close this properly; not built here, flagged for Phase 12/13.
 
 ### Phase 6 — 2026-08-12 (`v0.6.0`, commit `565fd8d`)
 
@@ -401,7 +425,7 @@ Closes the multi-tenancy gap flagged above, before any Phase 3 code depends on t
 
 **Done:**
 
-- `services/screening/`: `embeddings.py` (`EmbeddingClient` protocol + `GeminiEmbeddingClient`, same swappable-adapter pattern as `extraction/vlm.py`), `phonetic.py` (Double Metaphone via the `metaphone` package), `qdrant_store.py` (collection management, vector search, and a payload-filtered phonetic-code search — phonetic codes are stored as Qdrant payload and queried via `scroll()`, not scanned in memory, so this stays correct as the real list grows far past a small sample), `data.py` + `ingest.py` (a small, clearly-synthetic sample sanctions list — **not** real OFAC/UN data, per PLAN.md's own "sample" framing; real feed ingestion is a Phase 9/10 concern), `screen.py` (runs vector and phonetic search independently and merges results, deduplicating a double-hit into one row).
+- `services/screening/`: `embeddings.py` (`EmbeddingClient` protocol + `GeminiEmbeddingClient`, same swappable-adapter pattern as `extraction/vlm.py`), `phonetic.py` (Double Metaphone via the `metaphone` package), `qdrant_store.py` (collection management, vector search, and a payload-filtered phonetic-code search — phonetic codes are stored as Qdrant payload and queried via `scroll()`, not scanned in memory, so this stays correct as the real list grows far past a small sample), `data.py` + `ingest.py` (a small, clearly-synthetic sample sanctions list — **not** real OFAC/UN data, per PLAN.md's own "sample" framing; real feed ingestion is a Phase 12/13 concern), `screen.py` (runs vector and phonetic search independently and merges results, deduplicating a double-hit into one row).
 - `services/pipeline/face_match.py`: `FaceMatchClient` protocol + `InsightFaceClient`. Raises a distinct `NoFaceDetectedError` rather than returning a bogus similarity score when no face is found — a bad photo is a real, expected outcome, not a bug, and the caller needs to tell it apart from "found a face, low score."
 - Two new Temporal activities (`face_match_activity`, `sanctions_screen_activity`) and a document-fetch refactor (`fetch_id_document_activity` → `fetch_case_documents_activity`, now returning both the ID document and selfie in one query instead of two separate activities). `KycCaseWorkflow` runs face match and sanctions screening **concurrently** via `workflow.start_activity` (not `execute_activity`, which would await one before starting the next) once extraction succeeds — they're independent evidence sources feeding one future risk score (Phase 7), so sequencing them would only add latency.
 - Final case status now reflects all three checks: `needs_review` if extraction failed, no face was detected, *or* any sanctions hit was found; `processing` otherwise (final approve/reject decisioning is explicitly Phase 7's job, not this phase's).
@@ -421,7 +445,7 @@ Closes the multi-tenancy gap flagged above, before any Phase 3 code depends on t
 - **Genuine concurrent execution proven programmatically, not eyeballed**: a real workflow run against the live dev Temporal server, with deliberately slow fake `face_match_activity`/`sanctions_screen_activity` implementations, then the actual execution history fetched and walked to reconstruct each activity's `[started, completed]` window from the real event timestamps — confirming both windows overlap in both directions, which sequential execution could not produce. This is the same data the Temporal UI timeline is drawn from, read exactly instead of visually, and is what the exit criteria's literal wording ("Temporal UI timeline shows...") isn't achievable from an automated, non-interactive test — noted and adjusted in §9 rather than silently claimed as met.
 - **17 new tests, suite grown from 43 to 60**, all passing: 4 phonetic-matching unit tests, 6 `screen_name()` orchestration tests (5 against an isolated real Qdrant collection with a fake embedding client for deterministic control, 1 fully real), 3 real-InsightFace face-match tests, and the workflow suite extended/rewritten for the new concurrent-activity shape (missing-selfie short-circuit, no-face-detected → needs_review, sanctions-hit → needs_review, and the concurrency proof above).
 - **Full regression**: all 60 tests plus `ruff`, `black --check`, `mypy`, `pre-commit run --all-files` clean; confirmed zero leftover test tenants in Postgres and only the intentional dev-seeded `sanctions_entries` collection in Qdrant (all per-test isolated collections correctly dropped) after the run.
-- **Known gap (explicit, not silent):** the sample sanctions list (`data.py`) is 10 clearly-synthetic entries, not the real OFAC SDN or UN Consolidated list — matches PLAN.md's own "sample OFAC/UN list" framing for this phase; real feed ingestion (and keeping it current) is Phase 9/10 work.
+- **Known gap (explicit, not silent):** the sample sanctions list (`data.py`) is 10 clearly-synthetic entries, not the real OFAC SDN or UN Consolidated list — matches PLAN.md's own "sample OFAC/UN list" framing for this phase; real feed ingestion (and keeping it current) is Phase 12/13 work.
 - **Known gap (explicit, not silent):** final case-decisioning logic (`needs_review` vs. `processing`) is a simple any-red-flag rule, not the actual risk-scoring model — correct and sufficient for this phase's scope, but Phase 7 replaces it with real weighted risk scoring, not just extends it.
 
 ### Phase 7 — 2026-08-13 (`v0.7.0`, commit `eb3b334`)

@@ -48,15 +48,15 @@ services/
   pipeline/    # Temporal workflows/activities: extraction, face match, screening, risk scoring
   screening/   # Sanctions list ingestion + vector/phonetic matching
 infra/
-  terraform/   # AWS infrastructure (Phase 10)
+  terraform/   # AWS infrastructure (Phase 13)
 docs/          # Design notes, runbooks
-PLAN.md        # Full project plan: architecture, data model, 10-phase delivery plan, status
+PLAN.md        # Full project plan: architecture, data model, 13-phase delivery plan, status
 STUDY.md       # Concepts introduced each phase, explained, with links to further reading
 ```
 
 ## Status
 
-This project is being delivered in 10 phases, local-first (Docker Compose standing in for AWS), with AWS infrastructure introduced only in the final phase. See [PLAN.md](PLAN.md) for the full plan, current phase status, and changelog.
+This project is being delivered in 13 phases, local-first (Docker Compose standing in for AWS), with AWS infrastructure introduced only in the final phase. See [PLAN.md](PLAN.md) for the full plan, current phase status, and changelog.
 
 ## Development
 
