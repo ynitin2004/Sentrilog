@@ -15,9 +15,12 @@ from temporalio.worker import Worker
 from .. import db
 from ..config import settings
 from .activities import (
+    deliver_webhooks_activity,
     extract_document_activity,
     face_match_activity,
     fetch_case_documents_activity,
+    finalize_case_activity,
+    risk_score_activity,
     sanctions_screen_activity,
     update_case_status_activity,
 )
@@ -43,6 +46,9 @@ async def main() -> None:
                 face_match_activity,
                 sanctions_screen_activity,
                 update_case_status_activity,
+                risk_score_activity,
+                finalize_case_activity,
+                deliver_webhooks_activity,
             ],
         )
         for tier in PLAN_TIERS
