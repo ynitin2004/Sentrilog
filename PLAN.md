@@ -268,7 +268,7 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 | 5. Temporal wiring | **Done** | `v0.5.0` | `b904547` | 2026-08-11 |
 | 6. Face match + screening | **Done** | `v0.6.0` | `565fd8d` | 2026-08-12 |
 | 7. Risk scoring + review queue | **Done** (incl. v0.7.1 amendment) | `v0.7.1` | `eb3b334` | 2026-08-13 |
-| 8. Frontend foundation & design system | **Done** | `v0.8.0` | *(pending)* | 2026-08-16 |
+| 8. Frontend foundation & design system | **Done** | `v0.8.0` | `56db433` | 2026-08-16 |
 | 9. Backend endpoints + frontend integration | Not started | — | — | — |
 | 10. Real-time (SSE) & production hardening | Not started | — | — | — |
 | 11. Audit trail | Not started | — | — | — |
@@ -488,7 +488,7 @@ Closes the multi-tenancy gap flagged above, before any Phase 3 code depends on t
 
 **Known gap (explicit, not silent):** there is still no automated test that a real `Worker(...)` registration (as opposed to the fake-activity-substituted registrations `test_kyc_case_workflow.py` uses) actually contains every activity name the workflow can schedule — this bug could recur the same way for a future activity. A regression test asserting `worker.py`'s activity list is a superset of everything `KycCaseWorkflow` references is reasonable follow-up work, not built here to keep this patch minimal and focused on the actual fix.
 
-### Phase 8 — 2026-08-16 (`v0.8.0`, commit *(pending)*)
+### Phase 8 — 2026-08-16 (`v0.8.0`, commit `56db433`)
 
 **Design decisions made while implementing this:**
 
