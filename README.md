@@ -47,6 +47,8 @@ services/
   intake/      # FastAPI intake API, presigned uploads
   pipeline/    # Temporal workflows/activities: extraction, face match, screening, risk scoring
   screening/   # Sanctions list ingestion + vector/phonetic matching
+frontend/      # React + TypeScript operator console (reviewer queue + tenant/admin) -- Phase 8+
+webui/         # Phase 7's minimal single-file reviewer console, superseded by frontend/
 infra/
   terraform/   # AWS infrastructure (Phase 13)
 docs/          # Design notes, runbooks

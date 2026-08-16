@@ -152,8 +152,37 @@ This file grows every phase — treat it as a second changelog, one for concepts
 
 ---
 
+## Phase 8 concepts
+
+### `useSyncExternalStore` for a shared mock data layer
+
+**What:** A React 18 hook that subscribes a component to any external (non-React) mutable state source — you give it a `subscribe(callback)` function and a `getSnapshot()` function, and React re-renders the component whenever the snapshot changes. It's the same primitive React itself uses internally for things like the browser's online/offline status.
+
+**Why here:** Phase 8 has no real backend yet, so the reviewer queue's data has to live *somewhere* in memory that survives navigating between screens. A naive `useState` inside a custom hook doesn't do that — every component that calls the hook gets its own independent copy, because `useState`'s initial value only runs once *per component instance*, not once globally. `useSyncExternalStore` reads from one shared, module-level store instead, so every component calling `useReviewQueue()` sees (and can mutate) the same underlying data — which is exactly the role a shared client-side cache (Phase 9's TanStack Query) plays for real once there's a real backend to cache. This project actually hit the bug the naive version causes (see PLAN.md's Phase 8 changelog) before fixing it this way.
+
+**Read more:** <https://react.dev/reference/react/useSyncExternalStore>
+
+### Radix primitives + Tailwind (the shadcn/ui pattern)
+
+**What:** Radix UI ships unstyled, fully-accessible interactive primitives (dialogs, dropdowns, toasts) that handle the hard parts — focus trapping, `Escape`-to-close, ARIA attributes, portal rendering — while leaving all visual styling to you. "shadcn/ui" isn't a component library you install; it's a pattern of wrapping these primitives in your own small styled components (this project's `src/components/ui/`) using Tailwind classes, so you own the code and can change anything without fighting a library's API.
+
+**Why here:** Building a dialog's focus-trap and keyboard handling correctly from scratch is genuinely hard to get right (and easy to get *wrong* in ways that only show up for keyboard/screen-reader users) — Radix has already solved it. Tailwind utility classes on top keep the design-token system (`index.css`'s `@theme` colors) as the single source of visual truth, the same way the backend keeps `risk_scoring.py`'s weights as the single source of the risk-scoring formula rather than duplicating the number in multiple places.
+
+**Read more:** <https://www.radix-ui.com/primitives/docs/overview/introduction>
+
+### Automated accessibility testing with axe-core
+
+**What:** `axe-core` is a real accessibility-rule engine (the same one browser DevTools' own "Lighthouse"/"Accessibility" panels use) that scans rendered DOM for actual WCAG violations — missing labels, insufficient color contrast, invalid ARIA usage — and returns a structured list of what's wrong and why, not just a pass/fail score.
+
+**Why here:** "We built it with semantic HTML and ARIA attributes" is a claim; running a real audit against the actual rendered output on every test run is evidence. This project calls `axe-core` directly (`src/test/a11y.ts`) rather than through a matcher-wrapper library, after finding that wrapper's type definitions didn't match this project's (very new) Vitest version — a small real-world lesson that a convenience wrapper is only worth it while it's actually compatible with what it's wrapping.
+
+**Read more:** <https://github.com/dequelabs/axe-core>
+
+---
+
 ## Coming up later (named now so you know to watch for them)
 
-- **Immutable audit trail via hash chaining** (Phase 8) — `row_hash`/`prev_row_hash` linking every audit row to the one before it, so tampering with history breaks the chain.
-- **OpenTelemetry tracing** (Phase 9) — following one request across multiple services/processes.
-- **Terraform modules & remote state** (Phase 10) — infrastructure as version-controlled code.
+- **Server-Sent Events for real-time updates** (Phase 10) — pushing case-status changes to connected browsers via Postgres `LISTEN`/`NOTIFY`, instead of polling.
+- **Immutable audit trail via hash chaining** (Phase 11) — `row_hash`/`prev_row_hash` linking every audit row to the one before it, so tampering with history breaks the chain.
+- **OpenTelemetry tracing** (Phase 12) — following one request across multiple services/processes.
+- **Terraform modules & remote state** (Phase 13) — infrastructure as version-controlled code.
