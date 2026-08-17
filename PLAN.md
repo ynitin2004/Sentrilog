@@ -269,7 +269,7 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 | 6. Face match + screening | **Done** | `v0.6.0` | `565fd8d` | 2026-08-12 |
 | 7. Risk scoring + review queue | **Done** (incl. v0.7.1 amendment) | `v0.7.1` | `eb3b334` | 2026-08-13 |
 | 8. Frontend foundation & design system | **Done** | `v0.8.0` | `56db433` | 2026-08-16 |
-| 9. Backend endpoints + frontend integration | **Done** | `v0.9.0` | *(pending)* | 2026-08-17 |
+| 9. Backend endpoints + frontend integration | **Done** | `v0.9.0` | `3f5a6e7` | 2026-08-17 |
 | 10. Real-time (SSE) & production hardening | Not started | — | — | — |
 | 11. Audit trail | Not started | — | — | — |
 | 12. Hardening | Not started | — | — | — |
@@ -519,7 +519,7 @@ Closes the multi-tenancy gap flagged above, before any Phase 3 code depends on t
 - **Known gap (explicit, not silent):** the production bundle is ~745kB uncompressed / ~223kB gzipped in one chunk — `vite build` warns about this. Code splitting by route is explicitly Phase 10 scope (§9), not deferred silently.
 - **Known gap (explicit, not silent):** `@playwright/test` is now a devDependency (used for this phase's manual verification, browsers cached locally) even though no Playwright test files are committed yet — Phase 9 is where real E2E specs land.
 
-### Phase 9 — 2026-08-17 (`v0.9.0`, commit *(pending)*)
+### Phase 9 — 2026-08-17 (`v0.9.0`, commit `3f5a6e7`)
 
 **Design decisions made while implementing this:**
 
