@@ -9,7 +9,8 @@ import { DocumentPreview } from '@/components/domain/document-preview'
 import { RiskScoreGauge } from '@/components/domain/risk-score-gauge'
 import { DecisionPanel } from '@/components/domain/decision-panel'
 import { useToast } from '@/components/ui/toast'
-import { useCaseDetail, useReviewQueue } from '@/hooks/use-mock-data'
+import { useCaseDetail, useReviewQueue } from '@/hooks/use-api'
+import { ApiRequestError } from '@/lib/api-client'
 import { formatDate } from '@/lib/utils'
 import type { ReviewDecision } from '@/types/api'
 
@@ -28,13 +29,20 @@ export function ReviewerCaseDetailPage() {
 
   const handleDecision = async (decision: ReviewDecision, justification: string) => {
     if (!caseId) return
-    await new Promise((r) => setTimeout(r, 500))
-    decide(caseId, decision)
-    toast({
-      title: `Decision recorded: ${decision}`,
-      description: justification,
-    })
-    if (decision !== 'escalated') navigate('/reviewer/queue')
+    try {
+      await decide(caseId, decision, justification)
+      toast({
+        title: `Decision recorded: ${decision}`,
+        description: justification,
+      })
+      if (decision !== 'escalated') navigate('/reviewer/queue')
+    } catch (err) {
+      toast({
+        title: 'Failed to submit decision',
+        description: err instanceof ApiRequestError ? err.message : 'Please try again.',
+        variant: 'error',
+      })
+    }
   }
 
   return (

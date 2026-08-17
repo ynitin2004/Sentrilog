@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { AppShell } from '@/components/domain/app-shell'
 import { ReviewQueueList } from '@/components/domain/review-queue-list'
-import { useReviewQueue } from '@/hooks/use-mock-data'
+import { useReviewQueue } from '@/hooks/use-api'
 
 export function ReviewerQueuePage() {
   const { data: cases, isLoading } = useReviewQueue()

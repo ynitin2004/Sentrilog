@@ -15,6 +15,13 @@ dist-ssr
 # ad hoc smoke-test scripts/output, never committed
 .smoke*.mjs
 .smoke-screenshots/
+.e2e*.mjs
+.e2e-screenshots/
+
+# Intermediate build artifact for `npm run generate-types` (scripts/export_openapi.py ->
+# openapi.json -> src/types/api-generated.ts, which IS committed). Regenerate on demand rather
+# than committing a copy that can silently drift from the generated types it produced.
+openapi.json
 
 # Storybook
 storybook-static/

@@ -2,7 +2,7 @@ import { AppShell } from '@/components/domain/app-shell'
 import { ApiKeysTable } from '@/components/domain/admin-tables'
 import { CreateKeyModal } from '@/components/domain/create-key-modal'
 import { useToast } from '@/components/ui/toast'
-import { useApiKeys } from '@/hooks/use-mock-data'
+import { useApiKeys } from '@/hooks/use-api'
 import type { ApiKey } from '@/types/api'
 
 export function AdminApiKeysPage() {

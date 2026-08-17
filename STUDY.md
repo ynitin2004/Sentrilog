@@ -180,6 +180,34 @@ This file grows every phase — treat it as a second changelog, one for concepts
 
 ---
 
+## Phase 9 concepts
+
+### Generating TypeScript types from the backend's own OpenAPI schema
+
+**What:** FastAPI already knows the exact shape of every request/response it serves — `app.openapi()` returns that as a JSON Schema document without needing a running server. `openapi-typescript` turns that document into TypeScript `interface`s. The pipeline here is `scripts/export_openapi.py` (calls `app.openapi()` → `frontend/openapi.json`, gitignored as a regeneratable intermediate) → `npm run generate-types` (→ `src/types/api-generated.ts`, committed) → a thin hand-written `src/types/api.ts` that re-exports friendlier names and narrows the small number of fields OpenAPI can't express as precisely as the backend actually guarantees.
+
+**Why here:** Hand-maintaining a parallel set of TypeScript interfaces next to the Pydantic schemas is exactly the kind of duplication this project avoids everywhere else (the backend already keeps risk-scoring weights, status enums, and validation rules in one place each). The generated types make a backend schema change a compile error on the frontend instead of a silent runtime mismatch. The one piece of friction worth knowing: Pydantic fields typed as plain `str` produce `string` in the generated types, not a narrow union — this project hit that directly (`CaseResponse.status` needed to become a real `Literal[...]` type in `schemas.py`, matching the DB's `CHECK` constraint, before the generated frontend type became the specific `CaseStatus` union instead of `string`).
+
+**Read more:** <https://openapi-ts.dev/introduction>
+
+### TanStack Query: optimistic updates and cache-driven UI
+
+**What:** TanStack Query treats server data as a cache with a lifecycle (`useQuery` to read it, `useMutation` to change it) rather than data you copy into `useState` and manage by hand. Its optimistic-update pattern has three hooks working together: `onMutate` cancels any in-flight refetches, snapshots the current cache value, and writes the new value in immediately (before the server has responded); `onError` rolls the cache back to that snapshot if the request actually fails; `onSettled` invalidates the query afterward so the next read resyncs with whatever the server actually has, regardless of whether the optimistic guess was right.
+
+**Why here:** A reviewer claiming or deciding a case should feel instant — waiting on a network round-trip before the queue list updates makes the UI feel laggy for something that succeeds the overwhelming majority of the time. This project's `useReviewQueue` hook (`src/hooks/use-api.ts`) applies this to claim (always optimistic — claiming is advisory, nothing is lost if it's wrong) and decide (approve/reject remove the case from the cached queue immediately; escalate does not, mirroring the same signal semantics the backend's `KycCaseWorkflow` already uses) — with a real rollback path exercised against a real `409` (a case inserted directly via SQL, with no live workflow behind it to accept the decision).
+
+**Read more:** <https://tanstack.com/query/latest/docs/framework/react/guides/optimistic-updates>
+
+### Handling auth expiry from one place, not every screen
+
+**What:** Instead of every component that calls a protected endpoint checking for a `401` itself, the `QueryClient` is constructed *inside* the React tree (in a `QueryProvider` component, not at module scope) so its constructor can close over `useAuth()` and `useNavigate()`. The `queryCache`/`mutationCache` each get a global `onError` handler: if the error is an `UnauthorizedError`, it clears the session and redirects to `/connect`, from exactly one place, no matter which of the dozen or so hooks triggered it.
+
+**Why here:** A token can go stale for reasons that have nothing to do with any single screen (it was revoked from another tab, it simply expired) — handling that per-screen means either duplicating the same check nine times or, more likely, forgetting it on the tenth screen added later. Building the `QueryClient` inside the tree rather than as a module-level singleton (the more common tutorial pattern) is the specific trick that makes this possible, since a module-level client can't reach hooks at all.
+
+**Read more:** <https://tanstack.com/query/latest/docs/framework/react/guides/query-invalidation>
+
+---
+
 ## Coming up later (named now so you know to watch for them)
 
 - **Server-Sent Events for real-time updates** (Phase 10) — pushing case-status changes to connected browsers via Postgres `LISTEN`/`NOTIFY`, instead of polling.

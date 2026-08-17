@@ -10,7 +10,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { useToast } from '@/components/ui/toast'
-import { useWebhookDeliveries, useWebhooks } from '@/hooks/use-mock-data'
+import { useWebhookDeliveries, useWebhooks } from '@/hooks/use-api'
 import type { Webhook } from '@/types/api'
 
 export function AdminWebhooksPage() {
