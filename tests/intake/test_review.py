@@ -218,3 +218,162 @@ async def test_decision_records_review_decision_even_when_no_workflow_is_running
     assert row is not None
     assert row["decision"] == "approved"
     assert row["justification"] == "looks legitimate"
+
+
+# --- Case detail (GET /review/cases/{case_id}) ------------------------------------------------
+
+
+async def test_case_detail_requires_auth(client: AsyncClient) -> None:
+    response = await client.get(
+        "/review/cases/00000000-0000-0000-0000-000000000000",
+    )
+    assert response.status_code == 401
+
+
+async def test_case_detail_unknown_case_is_404(
+    client: AsyncClient, two_tenants_with_reviewers: dict[str, dict[str, str]]
+) -> None:
+    tenant_a = two_tenants_with_reviewers["a"]
+    response = await client.get(
+        "/review/cases/00000000-0000-0000-0000-000000000000",
+        headers={"Authorization": f"Bearer {tenant_a['reviewer_token']}"},
+    )
+    assert response.status_code == 404
+
+
+async def test_case_detail_cross_tenant_is_404(
+    client: AsyncClient, two_tenants_with_reviewers: dict[str, dict[str, str]]
+) -> None:
+    tenant_a = two_tenants_with_reviewers["a"]
+    tenant_b = two_tenants_with_reviewers["b"]
+    case_id = await _insert_case(tenant_a["tenant_id"], status="needs_review")
+
+    response = await client.get(
+        f"/review/cases/{case_id}",
+        headers={"Authorization": f"Bearer {tenant_b['reviewer_token']}"},
+    )
+    assert response.status_code == 404
+
+
+async def test_case_detail_with_no_extraction_face_match_or_sanctions_rows_is_all_nulls(
+    client: AsyncClient, two_tenants_with_reviewers: dict[str, dict[str, str]]
+) -> None:
+    """A case can reach needs_review before extraction even ran (e.g. no id_document at all) --
+    the endpoint must compose a coherent response, not 500, when the joined tables have nothing
+    for this case yet."""
+    tenant_a = two_tenants_with_reviewers["a"]
+    case_id = await _insert_case(tenant_a["tenant_id"], status="needs_review")
+
+    response = await client.get(
+        f"/review/cases/{case_id}",
+        headers={"Authorization": f"Bearer {tenant_a['reviewer_token']}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["extraction"] is None
+    assert body["face_match"] is None
+    assert body["sanctions_hits"] == []
+    assert body["id_document_url"] is None
+    assert body["selfie_url"] is None
+
+
+async def test_case_detail_composes_extraction_face_match_and_sanctions(
+    client: AsyncClient, two_tenants_with_reviewers: dict[str, dict[str, str]]
+) -> None:
+    tenant_a = two_tenants_with_reviewers["a"]
+    case_id = await _insert_case(
+        tenant_a["tenant_id"], status="needs_review", subject_name="Mohammed Al-Rashid"
+    )
+
+    pool = db.get_pool()
+    async with pool.acquire() as conn, conn.transaction():
+        await conn.execute("SELECT set_config('app.tenant_id', $1, true)", tenant_a["tenant_id"])
+        document_id = await conn.fetchval(
+            "INSERT INTO documents (tenant_id, case_id, s3_key, doc_type) "
+            "VALUES ($1, $2, $3, 'id_document') RETURNING id",
+            tenant_a["tenant_id"],
+            case_id,
+            f"{tenant_a['tenant_id']}/{case_id}/id_document",
+        )
+        await conn.execute(
+            "INSERT INTO documents (tenant_id, case_id, s3_key, doc_type) "
+            "VALUES ($1, $2, $3, 'selfie')",
+            tenant_a["tenant_id"],
+            case_id,
+            f"{tenant_a['tenant_id']}/{case_id}/selfie",
+        )
+        await conn.execute(
+            "INSERT INTO extractions (tenant_id, case_id, document_id, model_version, "
+            "raw_json, confidence, valid) VALUES ($1, $2, $3, 'mrz-icao9303', $4, 0.98, true)",
+            tenant_a["tenant_id"],
+            case_id,
+            document_id,
+            '{"full_name": "MOHAMMED AL-RASHID", "document_number": "P1234567", '
+            '"date_of_birth": "1988-11-02", "expiry_date": "2029-04-11", '
+            '"nationality": "ARE", "document_type": "passport"}',
+        )
+        await conn.execute(
+            "INSERT INTO face_matches (tenant_id, case_id, similarity_score, model_version) "
+            "VALUES ($1, $2, 0.94, 'insightface-buffalo_l')",
+            tenant_a["tenant_id"],
+            case_id,
+        )
+        await conn.execute(
+            "INSERT INTO sanctions_hits (tenant_id, case_id, list_source, matched_name, "
+            "match_score, method) VALUES ($1, $2, 'SAMPLE-OFAC-SDN', 'Mohammed Al-Rashid', "
+            "0.89, 'phonetic')",
+            tenant_a["tenant_id"],
+            case_id,
+        )
+
+    response = await client.get(
+        f"/review/cases/{case_id}",
+        headers={"Authorization": f"Bearer {tenant_a['reviewer_token']}"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["extraction"]["method"] == "mrz"
+    assert body["extraction"]["full_name"] == "MOHAMMED AL-RASHID"
+    assert body["extraction"]["document_number"] == "P1234567"
+    assert body["extraction"]["confidence"] == 0.98
+
+    assert body["face_match"]["similarity_score"] == 0.94
+    assert body["face_match"]["reason"] is None
+
+    assert len(body["sanctions_hits"]) == 1
+    assert body["sanctions_hits"][0]["matched_name"] == "Mohammed Al-Rashid"
+    assert body["sanctions_hits"][0]["method"] == "phonetic"
+
+    # Real presigned URLs, not placeholders -- pointing at the exact keys just inserted.
+    assert body["id_document_url"] is not None and "id_document" in body["id_document_url"]
+    assert body["selfie_url"] is not None and "selfie" in body["selfie_url"]
+
+
+async def test_case_detail_no_face_detected_has_null_score_and_a_reason(
+    client: AsyncClient, two_tenants_with_reviewers: dict[str, dict[str, str]]
+) -> None:
+    tenant_a = two_tenants_with_reviewers["a"]
+    case_id = await _insert_case(tenant_a["tenant_id"], status="needs_review")
+
+    pool = db.get_pool()
+    async with pool.acquire() as conn, conn.transaction():
+        await conn.execute("SELECT set_config('app.tenant_id', $1, true)", tenant_a["tenant_id"])
+        await conn.execute(
+            "INSERT INTO face_matches (tenant_id, case_id, similarity_score, model_version) "
+            "VALUES ($1, $2, NULL, 'insightface-buffalo_l')",
+            tenant_a["tenant_id"],
+            case_id,
+        )
+
+    response = await client.get(
+        f"/review/cases/{case_id}",
+        headers={"Authorization": f"Bearer {tenant_a['reviewer_token']}"},
+    )
+
+    assert response.status_code == 200
+    face_match = response.json()["face_match"]
+    assert face_match["similarity_score"] is None
+    assert face_match["reason"] is not None
