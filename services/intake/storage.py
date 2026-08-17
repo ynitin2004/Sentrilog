@@ -34,6 +34,18 @@ def presigned_put_url(key: str, content_type: str, expires_in: int = 900) -> str
     return url
 
 
+def presigned_get_url(key: str, expires_in: int = 900) -> str:
+    # For the reviewer case-detail view to actually display the uploaded ID photo/selfie --
+    # same local-signing, no-network-call reasoning as presigned_put_url.
+    client = get_s3_client()
+    url: str = client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": settings.s3_bucket, "Key": key},
+        ExpiresIn=expires_in,
+    )
+    return url
+
+
 def object_exists(key: str) -> bool:
     client = get_s3_client()
     try:
