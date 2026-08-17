@@ -2,7 +2,7 @@ import { AppShell } from '@/components/domain/app-shell'
 import { ReviewersTable } from '@/components/domain/admin-tables'
 import { AddReviewerForm } from '@/components/domain/add-reviewer-form'
 import { useToast } from '@/components/ui/toast'
-import { useReviewers } from '@/hooks/use-mock-data'
+import { useReviewers } from '@/hooks/use-api'
 import type { Reviewer } from '@/types/api'
 
 export function AdminReviewersPage() {

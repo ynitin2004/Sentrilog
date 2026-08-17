@@ -3,7 +3,7 @@ import { AppShell } from '@/components/domain/app-shell'
 import { StatCard } from '@/components/domain/stat-card'
 import { CaseVolumeChart, StatusBreakdownChart } from '@/components/domain/charts'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { useDashboardSummary } from '@/hooks/use-mock-data'
+import { useDashboardSummary } from '@/hooks/use-api'
 import { formatDateTime } from '@/lib/utils'
 
 export function AdminOverviewPage() {

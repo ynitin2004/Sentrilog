@@ -1,6 +1,6 @@
 import { AppShell } from '@/components/domain/app-shell'
 import { CasesTable } from '@/components/domain/cases-table'
-import { useCases } from '@/hooks/use-mock-data'
+import { useCases } from '@/hooks/use-api'
 
 export function AdminCasesPage() {
   const { data: cases, isLoading } = useCases()
