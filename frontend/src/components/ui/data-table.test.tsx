@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { FolderOpen } from 'lucide-react'
+import { expectNoA11yViolations } from '@/test/a11y'
 import { DataTable, type DataTableColumn } from './data-table'
 
 // jsdom has no real layout engine -- every element reports a 0px size, which makes
@@ -56,6 +57,20 @@ describe('DataTable (plain, non-virtualized)', () => {
       />,
     )
     expect(screen.getByText('Nothing here')).toBeInTheDocument()
+  })
+
+  it('has no accessibility violations', async () => {
+    const { container } = render(
+      <DataTable
+        columns={columns}
+        rows={makeRows(5)}
+        getRowKey={(r) => r.id}
+        emptyIcon={FolderOpen}
+        emptyTitle="empty"
+        onRowClick={() => {}}
+      />,
+    )
+    await expectNoA11yViolations(container)
   })
 })
 
@@ -115,5 +130,20 @@ describe('DataTable (virtualized)', () => {
     expect(screen.getByRole('table')).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'Label' })).toBeInTheDocument()
     expect(screen.getAllByRole('cell').length).toBeGreaterThan(0)
+  })
+
+  it('has no accessibility violations', async () => {
+    const { container } = render(
+      <DataTable
+        columns={columns}
+        rows={makeRows(100)}
+        getRowKey={(r) => r.id}
+        emptyIcon={FolderOpen}
+        emptyTitle="empty"
+        virtualized
+        onRowClick={() => {}}
+      />,
+    )
+    await expectNoA11yViolations(container)
   })
 })
