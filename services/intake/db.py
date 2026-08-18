@@ -46,6 +46,16 @@ async def resolve_reviewer_token(token_hash: str) -> asyncpg.Record | None:
     )
 
 
+async def raw_connection() -> asyncpg.Connection:
+    """Opens a dedicated, non-pooled connection.
+
+    LISTEN needs a connection held open for the lifetime of an SSE stream -- a pooled
+    connection from tenant_connection() gets released back to the pool (and its LISTEN state
+    reset) as soon as that async-with block exits, which is wrong for something long-lived.
+    """
+    return await asyncpg.connect(dsn=settings.database_url)
+
+
 @asynccontextmanager
 async def tenant_connection(tenant_id: str) -> AsyncIterator[asyncpg.Connection]:
     """Acquires a pooled connection scoped to one tenant for a single transaction.

@@ -1,13 +1,15 @@
+import asyncio
 import json
 import secrets
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Literal
 from uuid import UUID
 
 import asyncpg
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from temporalio.service import RPCError, RPCStatusCode
 
 from services.pipeline.workflows.contracts import (
@@ -16,7 +18,14 @@ from services.pipeline.workflows.contracts import (
 )
 
 from . import db
-from .auth import AuthContext, ReviewerAuthContext, hash_api_key, require_api_key, require_reviewer
+from .auth import (
+    AuthContext,
+    ReviewerAuthContext,
+    hash_api_key,
+    require_any_tenant,
+    require_api_key,
+    require_reviewer,
+)
 from .config import settings
 from .ratelimit import InMemoryRateLimiter
 from .scanning import validate_upload_request
@@ -410,6 +419,19 @@ async def claim_review_case(
             reviewer.reviewer_id,
             case_id,
         )
+        if row is not None:
+            await conn.execute(
+                "SELECT pg_notify('case_events', $1)",
+                json.dumps(
+                    {
+                        "tenant_id": reviewer.tenant_id,
+                        "case_id": case_id,
+                        "status": "needs_review",
+                        "decision": None,
+                        "claimed_by_reviewer_id": reviewer.reviewer_id,
+                    }
+                ),
+            )
 
     if row is None:
         raise HTTPException(
@@ -833,4 +855,63 @@ async def get_dashboard_summary(
             )
             for row in activity_rows
         ],
+    )
+
+
+# --- Real-time events (SSE) --------------------------------------------------------------
+
+
+_SSE_KEEPALIVE_SECONDS = 15.0
+
+
+async def _case_events_generator(request: Request, tenant_id: str) -> AsyncGenerator[str, None]:
+    # A dedicated connection (not from the pool) held open for as long as the client stays
+    # connected -- see db.raw_connection()'s docstring for why tenant_connection() can't do
+    # this. Filtering by tenant happens here, in the callback, not in Postgres: pg_notify has
+    # one shared channel across all tenants, and NOTIFY/LISTEN has no concept of row-level
+    # security to filter it for us.
+    queue: asyncio.Queue[str] = asyncio.Queue()
+
+    def _on_notify(_conn: object, _pid: int, _channel: str, payload: str) -> None:
+        try:
+            event = json.loads(payload)
+        except json.JSONDecodeError:
+            return
+        if event.get("tenant_id") == tenant_id:
+            queue.put_nowait(payload)
+
+    conn = await db.raw_connection()
+    try:
+        await conn.add_listener("case_events", _on_notify)
+        yield "retry: 3000\n\n"
+        while True:
+            if await request.is_disconnected():
+                break
+            try:
+                payload = await asyncio.wait_for(queue.get(), timeout=_SSE_KEEPALIVE_SECONDS)
+            except TimeoutError:
+                # A comment line (starts with ':') keeps intermediary proxies/load balancers
+                # from treating a quiet-but-healthy connection as dead and closing it.
+                yield ": keep-alive\n\n"
+                continue
+            yield f"event: case_status_changed\ndata: {payload}\n\n"
+    finally:
+        await conn.remove_listener("case_events", _on_notify)
+        await conn.close()
+
+
+@app.get("/events/stream")
+async def stream_case_events(
+    request: Request, tenant_id: str = Depends(require_any_tenant)
+) -> StreamingResponse:
+    return StreamingResponse(
+        _case_events_generator(request, tenant_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            # Disables response buffering on nginx-style reverse proxies, which would otherwise
+            # hold the stream's bytes until a buffer filled instead of flushing them live.
+            "X-Accel-Buffering": "no",
+        },
     )
