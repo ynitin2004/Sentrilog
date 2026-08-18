@@ -1,3 +1,4 @@
+import * as React from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, ShieldAlert, UserCheck } from 'lucide-react'
 import { AppShell } from '@/components/domain/app-shell'
@@ -20,11 +21,26 @@ export function ReviewerCaseDetailPage() {
   const { claim, decide } = useReviewQueue()
   const { toast } = useToast()
   const navigate = useNavigate()
+  const [claiming, setClaiming] = React.useState(false)
 
-  const handleClaim = () => {
-    if (!caseId) return
-    claim(caseId)
-    toast({ title: 'Case claimed' })
+  const handleClaim = async () => {
+    if (!caseId || claiming) return
+    setClaiming(true)
+    try {
+      await claim(caseId)
+      toast({ title: 'Case claimed' })
+    } catch (err) {
+      // Most often another reviewer claimed or decided this case first -- the optimistic
+      // update already rolled itself back (see useReviewQueue's onError), so this is purely
+      // about telling the reviewer honestly rather than leaving them thinking it worked.
+      toast({
+        title: 'Could not claim this case',
+        description: err instanceof ApiRequestError ? err.message : 'Please try again.',
+        variant: 'error',
+      })
+    } finally {
+      setClaiming(false)
+    }
   }
 
   const handleDecision = async (decision: ReviewDecision, justification: string) => {
@@ -72,7 +88,12 @@ export function ReviewerCaseDetailPage() {
                   DOB {detail.subject_dob ?? '—'} · Submitted {formatDate(detail.created_at)}
                 </p>
               </div>
-              <Button variant="secondary" onClick={handleClaim}>
+              <Button
+                variant="secondary"
+                onClick={handleClaim}
+                loading={claiming}
+                disabled={claiming}
+              >
                 <UserCheck className="h-4 w-4" /> Claim case
               </Button>
             </div>

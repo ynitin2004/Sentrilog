@@ -15,7 +15,9 @@
 
   --color-text: oklch(20% 0.015 260);
   --color-text-muted: oklch(45% 0.014 260);
-  --color-text-subtle: oklch(60% 0.012 260);
+  /* 55%, not 60% -- 60% measured 3.95:1 against this theme's white surface in a real Lighthouse
+     audit, just under WCAG AA's 4.5:1 minimum for normal-size text. 55% clears it at ~4.85:1. */
+  --color-text-subtle: oklch(55% 0.012 260);
 
   --color-brand: oklch(45% 0.16 264);
   --color-brand-hover: oklch(40% 0.17 264);
@@ -67,7 +69,9 @@
 
     --color-text: oklch(94% 0.006 260);
     --color-text-muted: oklch(75% 0.01 260);
-    --color-text-subtle: oklch(58% 0.012 260);
+    /* Same WCAG AA fix as the light-mode token above -- 58% measured 4.04:1 against this dark
+       theme's surface color; 64% clears 4.5:1 at ~5.15:1. */
+    --color-text-subtle: oklch(64% 0.012 260);
 
     --color-brand: oklch(72% 0.14 264);
     --color-brand-hover: oklch(78% 0.13 264);
@@ -107,7 +111,7 @@
 
   --color-text: oklch(94% 0.006 260);
   --color-text-muted: oklch(75% 0.01 260);
-  --color-text-subtle: oklch(58% 0.012 260);
+  --color-text-subtle: oklch(64% 0.012 260);
 
   --color-brand: oklch(72% 0.14 264);
   --color-brand-hover: oklch(78% 0.13 264);

@@ -208,9 +208,44 @@ This file grows every phase — treat it as a second changelog, one for concepts
 
 ---
 
+## Phase 10 concepts
+
+### Postgres LISTEN/NOTIFY for real-time push
+
+**What:** `NOTIFY channel, 'payload'` broadcasts a small text message to every client currently `LISTEN`ing on that channel name, on the same Postgres server. It's pub/sub built into the database itself — no message queue, no broker, nothing to run or operate beyond Postgres, which this project already depends on. Delivery is fire-and-forget and only happens on transaction commit: a `NOTIFY` inside a transaction that later rolls back is simply never sent.
+
+**Why here:** The alternative to real-time updates is polling — every connected browser re-fetching the queue every few seconds "just in case" something changed. That wastes requests when nothing changed and adds latency when something did. `NOTIFY`/`LISTEN` inverts it: the database tells you the instant something changes, because the write that changed it is the same write that sends the notification (see `update_case_status_activity`/`finalize_case_activity` in `services/pipeline/workflows/activities.py`). The one thing it *doesn't* give you for free is per-tenant filtering — a channel has no concept of row-level security, so every `LISTEN`er on `case_events` receives every tenant's events, and the intake API's `GET /events/stream` endpoint has to filter by `tenant_id` itself before ever queuing a message for a specific client.
+
+**Read more:** <https://www.postgresql.org/docs/current/sql-notify.html>
+
+### Server-Sent Events (SSE)
+
+**What:** A one-way, long-lived HTTP response with `Content-Type: text/event-stream` — the server keeps the connection open and writes small text frames (`data: ...\n\n`) whenever it has something new to send, and the browser (or, here, a hand-rolled `fetch` + `ReadableStream` reader) keeps reading them as they arrive. Unlike WebSockets, it's plain HTTP in one direction only, which is all a "tell the browser when a case's status changes" feature actually needs.
+
+**Why here:** The browser's built-in `EventSource` API is the normal way to consume SSE, but it can't send custom headers — no way to attach `Authorization: Bearer <token>`, which is how every other endpoint in this project authenticates. Rather than inventing a separate cookie- or query-string-based auth path just for this one endpoint (and putting a bearer token in a URL, which risks it ending up in server/proxy logs), `useCaseEventsStream` (`frontend/src/hooks/use-case-events.ts`) consumes the stream with a plain `fetch` call and parses `text/event-stream` frames out of the response body manually. The tradeoff: reconnection isn't automatic like `EventSource` gives you for free, so the hook implements its own exponential backoff.
+
+**Read more:** <https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events>
+
+### Virtualized lists
+
+**What:** Instead of rendering one DOM element per row in a list, a virtualizer renders only the rows currently near the visible viewport (plus a small overscan buffer) and absolutely-positions them inside a container sized to the *full* list's total height. Scrolling swaps which rows are mounted rather than growing the DOM without bound.
+
+**Why here:** A `<table>` can't be virtualized directly — absolutely positioning only a handful of rows requires each row to be independently placeable, which native table layout (rows sized and positioned relative to each other by the browser) doesn't allow. `DataTable`'s virtualized path (`frontend/src/components/ui/data-table.tsx`) switches to CSS grid/flex `div`s instead, which is the standard workaround — but that trade loses the *automatic* accessibility semantics a real `<table>`/`<tr>`/`<td>` gives a screen reader for free, unless you explicitly restore them. Real ones: `role="table"`, `role="row"`, `role="cell"`, `role="columnheader"` on the right elements. This project only reaches for it where a list is genuinely unbounded (a tenant's full case history, an append-only webhook delivery log) — applying it to small, naturally-bounded lists (a handful of API keys) would add real complexity for no benefit.
+
+**Read more:** <https://tanstack.com/virtual/latest/docs/introduction>
+
+### Route-based code splitting
+
+**What:** Instead of one JavaScript bundle containing every screen's code, each route's component is wrapped in `React.lazy(() => import('./SomePage'))`, which tells the bundler (Vite, here) to put that screen in its own separate file, fetched only when a user actually navigates to it. A `<Suspense>` boundary with a fallback covers the brief gap between "user clicked a link" and "that chunk's JS finished downloading."
+
+**Why here:** Phase 8/9 shipped one ~778kB bundle containing the reviewer console, the entire admin console (API keys, webhooks, reviewer management), and `recharts` (a sizeable charting library used only by the admin dashboard) — a reviewer who never touches the admin screens was still downloading all of it. Splitting by route means a reviewer's first load only fetches the reviewer queue's code; the admin bundle (and `recharts` specifically) only loads if and when someone actually visits `/admin/overview`.
+
+**Read more:** <https://react.dev/reference/react/lazy>
+
+---
+
 ## Coming up later (named now so you know to watch for them)
 
-- **Server-Sent Events for real-time updates** (Phase 10) — pushing case-status changes to connected browsers via Postgres `LISTEN`/`NOTIFY`, instead of polling.
 - **Immutable audit trail via hash chaining** (Phase 11) — `row_hash`/`prev_row_hash` linking every audit row to the one before it, so tampering with history breaks the chain.
 - **OpenTelemetry tracing** (Phase 12) — following one request across multiple services/processes.
 - **Terraform modules & remote state** (Phase 13) — infrastructure as version-controlled code.

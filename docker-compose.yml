@@ -94,6 +94,16 @@ services:
     ports:
       - "8080:8080"
 
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "8081:80"
+    # The intake API and pipeline worker aren't containerized here (both are still run
+    # locally, e.g. `uv run uvicorn services.intake.main:app`), so there's nothing in this
+    # compose file for the frontend to depend_on -- it's a static build; connect to a running
+    # API through its own /connect screen the same way the browser always has.
+
 volumes:
   postgres_data:
   qdrant_data:

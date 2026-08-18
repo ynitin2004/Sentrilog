@@ -22,7 +22,7 @@ export function ConnectPage() {
   }
 
   return (
-    <div className="bg-bg flex min-h-screen items-center justify-center px-4">
+    <main className="bg-bg flex min-h-screen items-center justify-center px-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="flex-col items-start gap-1">
           <div className="flex items-center gap-2">
@@ -81,6 +81,6 @@ export function ConnectPage() {
           </CardContent>
         </form>
       </Card>
-    </div>
+    </main>
   )
 }

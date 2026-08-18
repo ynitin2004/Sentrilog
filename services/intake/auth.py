@@ -73,3 +73,31 @@ async def require_reviewer(
     return ReviewerAuthContext(
         tenant_id=str(row["tenant_id"]), reviewer_id=str(row["reviewer_id"]), role=row["role"]
     )
+
+
+async def require_any_tenant(authorization: str | None = Header(default=None)) -> str:
+    """Resolves either an API key or a reviewer token to its tenant_id.
+
+    The event stream is one endpoint serving both the reviewer queue and the admin console, so
+    it accepts whichever credential the caller has rather than forcing two separate routes.
+    """
+    if authorization is None or not authorization.startswith("Bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or malformed Authorization header; expected 'Bearer <token>'",
+        )
+    raw_token = authorization.removeprefix("Bearer ").strip()
+    if not raw_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Empty token")
+
+    token_hash = hash_api_key(raw_token)
+
+    reviewer_row = await db.resolve_reviewer_token(token_hash)
+    if reviewer_row is not None and reviewer_row["revoked_at"] is None:
+        return str(reviewer_row["tenant_id"])
+
+    api_key_row = await db.resolve_api_key(token_hash)
+    if api_key_row is not None and api_key_row["revoked_at"] is None:
+        return str(api_key_row["tenant_id"])
+
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or revoked token")

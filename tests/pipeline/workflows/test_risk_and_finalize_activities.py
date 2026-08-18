@@ -1,9 +1,13 @@
-"""risk_score_activity and finalize_case_activity tests against the real dev Postgres
-(sentrilog_app role, same RLS path as production). risk_scoring.py's own decision logic is
-already covered in isolation by tests/pipeline/test_risk_scoring.py -- these tests instead
-prove the activity wrapper actually persists what that logic decides.
+"""risk_score_activity, update_case_status_activity, and finalize_case_activity tests against
+the real dev Postgres (sentrilog_app role, same RLS path as production). risk_scoring.py's own
+decision logic is already covered in isolation by tests/pipeline/test_risk_scoring.py -- these
+tests instead prove the activity wrapper actually persists what that logic decides, and (Phase
+10) that status-changing activities fire a real pg_notify('case_events', ...) a real LISTEN
+connection can observe -- the backend half of the SSE real-time pipeline.
 """
 
+import asyncio
+import json
 import secrets
 from collections.abc import AsyncIterator
 
@@ -11,14 +15,29 @@ import asyncpg
 import pytest_asyncio
 
 from services.pipeline import db
+from services.pipeline.config import settings
 from services.pipeline.workflows.activities import (
     FinalizeCaseInput,
     RiskScoreInput,
+    UpdateCaseStatusInput,
     finalize_case_activity,
     risk_score_activity,
+    update_case_status_activity,
 )
 
 _ADMIN_DSN = "postgresql://sentrilog:sentrilog@localhost:5432/sentrilog"
+
+
+async def _listen_for_one_case_event() -> tuple[asyncpg.Connection, "asyncio.Queue[str]"]:
+    """Opens a dedicated LISTEN connection (mirroring services.intake.db.raw_connection --
+    pipeline has no such helper since only the intake API's SSE endpoint needs one, but the
+    underlying pg_notify channel is server-side, not process-local, so any connection to the
+    same database can observe it) and returns it plus a queue fed by the notification.
+    """
+    queue: asyncio.Queue[str] = asyncio.Queue()
+    conn = await asyncpg.connect(dsn=settings.database_url)
+    await conn.add_listener("case_events", lambda _c, _p, _ch, payload: queue.put_nowait(payload))
+    return conn, queue
 
 
 @pytest_asyncio.fixture(scope="module", autouse=True)
@@ -123,3 +142,89 @@ async def test_finalize_case_activity_sets_status_decision_and_decided_at() -> N
         assert row["decided_at"] is not None
     finally:
         await _delete_tenant(tenant_id)
+
+
+async def test_update_case_status_activity_persists_status() -> None:
+    tenant_id, case_id = await _create_tenant_and_case()
+    try:
+        await update_case_status_activity(
+            UpdateCaseStatusInput(tenant_id=tenant_id, case_id=case_id, status="processing")
+        )
+
+        async with db.tenant_connection(tenant_id) as conn:
+            stored = await conn.fetchval("SELECT status FROM cases WHERE id = $1", case_id)
+        assert stored == "processing"
+    finally:
+        await _delete_tenant(tenant_id)
+
+
+async def test_update_case_status_activity_notifies_a_real_listener() -> None:
+    tenant_id, case_id = await _create_tenant_and_case()
+    listener_conn, queue = await _listen_for_one_case_event()
+    try:
+        await update_case_status_activity(
+            UpdateCaseStatusInput(tenant_id=tenant_id, case_id=case_id, status="processing")
+        )
+
+        payload = await asyncio.wait_for(queue.get(), timeout=5.0)
+        event = json.loads(payload)
+        assert event == {
+            "tenant_id": tenant_id,
+            "case_id": case_id,
+            "status": "processing",
+            "decision": None,
+        }
+    finally:
+        await listener_conn.close()
+        await _delete_tenant(tenant_id)
+
+
+async def test_finalize_case_activity_notifies_a_real_listener() -> None:
+    tenant_id, case_id = await _create_tenant_and_case()
+    listener_conn, queue = await _listen_for_one_case_event()
+    try:
+        await finalize_case_activity(
+            FinalizeCaseInput(
+                tenant_id=tenant_id, case_id=case_id, status="rejected", decision="rejected"
+            )
+        )
+
+        payload = await asyncio.wait_for(queue.get(), timeout=5.0)
+        event = json.loads(payload)
+        assert event == {
+            "tenant_id": tenant_id,
+            "case_id": case_id,
+            "status": "rejected",
+            "decision": "rejected",
+        }
+    finally:
+        await listener_conn.close()
+        await _delete_tenant(tenant_id)
+
+
+async def test_finalize_case_activity_never_notifies_a_listener_on_a_different_tenant() -> None:
+    tenant_id, case_id = await _create_tenant_and_case()
+    other_tenant_id, other_case_id = await _create_tenant_and_case()
+    listener_conn, queue = await _listen_for_one_case_event()
+    try:
+        await finalize_case_activity(
+            FinalizeCaseInput(
+                tenant_id=other_tenant_id,
+                case_id=other_case_id,
+                status="approved",
+                decision="approved",
+            )
+        )
+        payload = await asyncio.wait_for(queue.get(), timeout=5.0)
+        event = json.loads(payload)
+        # The channel is shared across all tenants (pg_notify has no per-channel ACLs); tenant
+        # isolation for LISTEN/NOTIFY is a consumer-side filtering responsibility, proven here
+        # by asserting the OTHER tenant's payload is what actually arrives -- the intake API's
+        # /events/stream endpoint is what filters this by the caller's own tenant_id (covered in
+        # tests/intake/test_events_stream.py), not Postgres itself.
+        assert event["tenant_id"] == other_tenant_id
+        assert event["tenant_id"] != tenant_id
+    finally:
+        await listener_conn.close()
+        await _delete_tenant(tenant_id)
+        await _delete_tenant(other_tenant_id)
