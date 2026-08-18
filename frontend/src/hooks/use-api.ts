@@ -82,7 +82,11 @@ export function useReviewQueue() {
   return {
     data: query.data ?? [],
     isLoading: query.isLoading,
-    claim: (caseId: string) => claimMutation.mutate(caseId),
+    // mutateAsync, not mutate -- claiming is optimistic in the cache (see onMutate above), but
+    // the caller still needs to know if it actually failed (someone else claimed or decided the
+    // case first) so it can show that honestly instead of a success toast for a claim that
+    // silently rolled back.
+    claim: (caseId: string) => claimMutation.mutateAsync(caseId),
     decide: (caseId: string, decision: ReviewDecision, justification: string) =>
       decideMutation.mutateAsync({ caseId, decision, justification }),
   }
