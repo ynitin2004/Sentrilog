@@ -11,8 +11,11 @@ import {
   Menu,
   X,
   ShieldCheck,
+  Wifi,
+  WifiOff,
 } from 'lucide-react'
 import { useAuth, type Persona } from '@/lib/auth-context'
+import { useCaseEventsStream, type SseStatus } from '@/hooks/use-case-events'
 import { cn } from '@/lib/utils'
 
 interface NavItem {
@@ -35,6 +38,7 @@ export function AppShell({ persona, children }: { persona: Persona; children: Re
   const { session, disconnect } = useAuth()
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false)
   const items = persona === 'reviewer' ? REVIEWER_NAV : ADMIN_NAV
+  const sseStatus = useCaseEventsStream()
 
   const nav = (
     <nav className="flex flex-1 flex-col gap-1 p-3" aria-label="Primary">
@@ -68,7 +72,12 @@ export function AppShell({ persona, children }: { persona: Persona; children: Re
           <span className="text-text font-semibold">Sentrilog</span>
         </div>
         {nav}
-        <SessionFooter apiBase={session?.apiBase} persona={persona} onDisconnect={disconnect} />
+        <SessionFooter
+          apiBase={session?.apiBase}
+          persona={persona}
+          sseStatus={sseStatus}
+          onDisconnect={disconnect}
+        />
       </aside>
 
       {/* Mobile sidebar (overlay) */}
@@ -91,7 +100,12 @@ export function AppShell({ persona, children }: { persona: Persona; children: Re
               </button>
             </div>
             {nav}
-            <SessionFooter apiBase={session?.apiBase} persona={persona} onDisconnect={disconnect} />
+            <SessionFooter
+          apiBase={session?.apiBase}
+          persona={persona}
+          sseStatus={sseStatus}
+          onDisconnect={disconnect}
+        />
           </aside>
         </div>
       )}
@@ -117,10 +131,12 @@ export function AppShell({ persona, children }: { persona: Persona; children: Re
 function SessionFooter({
   apiBase,
   persona,
+  sseStatus,
   onDisconnect,
 }: {
   apiBase: string | undefined
   persona: Persona
+  sseStatus: SseStatus
   onDisconnect: () => void
 }) {
   return (
@@ -128,7 +144,10 @@ function SessionFooter({
       <p className="text-text-subtle truncate px-1 text-xs" title={apiBase}>
         {apiBase ?? 'Not connected'}
       </p>
-      <p className="text-text-subtle px-1 text-xs capitalize">{persona} console</p>
+      <div className="flex items-center justify-between px-1">
+        <p className="text-text-subtle text-xs capitalize">{persona} console</p>
+        <LiveIndicator status={sseStatus} />
+      </div>
       <button
         type="button"
         onClick={onDisconnect}
@@ -137,5 +156,34 @@ function SessionFooter({
         <LogOut className="h-4 w-4" /> Disconnect
       </button>
     </div>
+  )
+}
+
+const SSE_STATUS_LABEL: Record<SseStatus, string> = {
+  connecting: 'Connecting...',
+  open: 'Live',
+  reconnecting: 'Reconnecting...',
+}
+
+/** Surfaces the real-time connection's state rather than hiding it -- a silently-stalled stream
+ * would look identical to a working one otherwise, and "reconnecting" is exactly the state a
+ * real network drop puts this in (see PLAN.md Phase 10's exit criteria). */
+function LiveIndicator({ status }: { status: SseStatus }) {
+  const label = SSE_STATUS_LABEL[status]
+  return (
+    <span
+      className={cn(
+        'flex items-center gap-1 text-xs',
+        status === 'open' ? 'text-success' : 'text-text-subtle',
+      )}
+      title={label}
+    >
+      {status === 'reconnecting' ? (
+        <WifiOff className="h-3 w-3" aria-hidden="true" />
+      ) : (
+        <Wifi className="h-3 w-3" aria-hidden="true" />
+      )}
+      <span className="sr-only">{label}</span>
+    </span>
   )
 }
