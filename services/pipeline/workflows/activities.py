@@ -276,11 +276,29 @@ async def sanctions_screen_activity(input: SanctionsScreenInput) -> SanctionsScr
     return SanctionsScreenOutput(hit_count=len(hits), highest_score=highest)
 
 
+def _case_event_payload(
+    tenant_id: str, case_id: str, status: str, *, decision: str | None = None
+) -> str:
+    payload: dict[str, str | None] = {
+        "tenant_id": tenant_id,
+        "case_id": case_id,
+        "status": status,
+        "decision": decision,
+    }
+    return json.dumps(payload)
+
+
 @activity.defn
 async def update_case_status_activity(input: UpdateCaseStatusInput) -> None:
     async with db.tenant_connection(input.tenant_id) as conn:
         await conn.execute(
             "UPDATE cases SET status = $1 WHERE id = $2", input.status, input.case_id
+        )
+        # NOTIFY is only delivered when this transaction commits (tenant_connection wraps every
+        # statement in one), so a listener can never observe a status that later rolled back.
+        await conn.execute(
+            "SELECT pg_notify('case_events', $1)",
+            _case_event_payload(input.tenant_id, input.case_id, input.status),
         )
 
 
@@ -314,6 +332,12 @@ async def finalize_case_activity(input: FinalizeCaseInput) -> None:
             input.status,
             input.decision,
             input.case_id,
+        )
+        await conn.execute(
+            "SELECT pg_notify('case_events', $1)",
+            _case_event_payload(
+                input.tenant_id, input.case_id, input.status, decision=input.decision
+            ),
         )
 
 
