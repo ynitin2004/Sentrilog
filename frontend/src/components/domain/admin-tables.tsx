@@ -190,6 +190,9 @@ export function DeliveryLogTable({ deliveries, isLoading = false }: DeliveryLogT
       emptyIcon={Send}
       emptyTitle="No deliveries yet"
       emptyDescription="Deliveries appear here after the first case decision fires this webhook."
+      virtualized={deliveries.length > 50}
+      rowHeight={48}
+      maxHeight={480}
     />
   )
 }

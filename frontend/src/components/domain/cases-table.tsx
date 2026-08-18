@@ -33,6 +33,9 @@ export function CasesTable({ cases, isLoading = false, onSelect }: CasesTablePro
       emptyTitle="No cases yet"
       emptyDescription="Cases created through the intake API will appear here."
       onRowClick={onSelect}
+      virtualized={cases.length > 50}
+      rowHeight={52}
+      maxHeight={560}
     />
   )
 }
