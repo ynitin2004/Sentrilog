@@ -1,0 +1,12 @@
+node_modules
+dist
+dist-ssr
+storybook-static
+coverage
+.storybook
+*.local
+.smoke*.mjs
+.smoke-screenshots/
+.e2e*.mjs
+.e2e-screenshots/
+openapi.json
