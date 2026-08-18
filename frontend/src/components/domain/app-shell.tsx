@@ -101,11 +101,11 @@ export function AppShell({ persona, children }: { persona: Persona; children: Re
             </div>
             {nav}
             <SessionFooter
-          apiBase={session?.apiBase}
-          persona={persona}
-          sseStatus={sseStatus}
-          onDisconnect={disconnect}
-        />
+              apiBase={session?.apiBase}
+              persona={persona}
+              sseStatus={sseStatus}
+              onDisconnect={disconnect}
+            />
           </aside>
         </div>
       )}
