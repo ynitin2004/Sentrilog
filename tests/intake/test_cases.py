@@ -1,8 +1,11 @@
 import secrets
 
+import asyncpg
 import httpx
 import pytest
 from httpx import AsyncClient
+
+_ADMIN_DSN = "postgresql://sentrilog:sentrilog@localhost:5432/sentrilog"
 
 VALID_PAYLOAD = {
     "subject_name": "Alice Test",
@@ -192,3 +195,48 @@ async def test_malformed_case_id_never_500s(
 ) -> None:
     resp = await client.get(f"/cases/{bad_uuid}", headers=_auth(two_tenants["a"]["api_key"]))
     assert resp.status_code in (404, 429)
+
+
+async def _fetch_audit_event_types(tenant_id: str, case_id: str) -> list[str]:
+    conn = await asyncpg.connect(dsn=_ADMIN_DSN)
+    try:
+        rows = await conn.fetch(
+            "SELECT event_type FROM audit_log WHERE tenant_id = $1 AND case_id = $2 "
+            "ORDER BY id ASC",
+            tenant_id,
+            case_id,
+        )
+        return [r["event_type"] for r in rows]
+    finally:
+        await conn.close()
+
+
+async def test_create_case_writes_a_case_created_audit_row(
+    client: AsyncClient, two_tenants: dict[str, dict[str, str]]
+) -> None:
+    tenant_a = two_tenants["a"]
+    resp = await client.post(
+        "/cases",
+        json=VALID_PAYLOAD,
+        headers={**_auth(tenant_a["api_key"]), "Idempotency-Key": secrets.token_hex(8)},
+    )
+    assert resp.status_code == 201
+    case_id = resp.json()["case_id"]
+    assert await _fetch_audit_event_types(tenant_a["tenant_id"], case_id) == ["case_created"]
+
+
+async def test_idempotency_key_replay_does_not_duplicate_the_audit_row(
+    client: AsyncClient, two_tenants: dict[str, dict[str, str]]
+) -> None:
+    tenant_a = two_tenants["a"]
+    idem_key = secrets.token_hex(8)
+    headers = {**_auth(tenant_a["api_key"]), "Idempotency-Key": idem_key}
+
+    first = await client.post("/cases", json=VALID_PAYLOAD, headers=headers)
+    second = await client.post("/cases", json=VALID_PAYLOAD, headers=headers)
+    assert first.status_code == 201 and second.status_code == 201
+    case_id = first.json()["case_id"]
+
+    # A replay didn't actually create the case again -- it must not look like it did in the
+    # audit trail either.
+    assert await _fetch_audit_event_types(tenant_a["tenant_id"], case_id) == ["case_created"]

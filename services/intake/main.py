@@ -17,7 +17,7 @@ from services.pipeline.workflows.contracts import (
     ReviewDecisionSignal,
 )
 
-from . import db
+from . import audit, db
 from .auth import (
     AuthContext,
     ReviewerAuthContext,
@@ -179,6 +179,18 @@ async def create_case(
     # Phase 5 changelog). start_kyc_case_workflow is itself idempotent on case_id, so replays
     # (including this same request retried by the client) don't double-start anything.
     await start_kyc_case_workflow(tenant_id=auth.tenant_id, case_id=case_id, plan_tier=plan_tier)
+
+    if not is_replay:
+        # Not written for a replay (an idempotency-key retry of an already-created case) -- the
+        # case wasn't actually created again, so an audit row saying it was would misrepresent
+        # the trail rather than complete it.
+        await audit.record(
+            auth.tenant_id,
+            case_id,
+            "case_created",
+            actor=f"api-key:{auth.api_key_id}",
+            payload={"subject_name": payload.subject_name, "plan_tier": plan_tier},
+        )
 
     targets: dict[str, UploadTarget] = {}
     for doc_type in _DOC_TYPES:
@@ -477,6 +489,17 @@ async def submit_review_decision(
             payload.decision,
             payload.justification,
         )
+
+    # Recorded as soon as the decision itself commits, regardless of whether signaling the
+    # workflow below succeeds -- the decision was genuinely made at this point even in the known
+    # "workflow no longer running" case a few lines down, and the audit trail should say so.
+    await audit.record(
+        reviewer.tenant_id,
+        case_id,
+        "review_decision_recorded",
+        actor=f"reviewer:{reviewer.reviewer_id}",
+        payload={"decision": payload.decision, "justification": payload.justification},
+    )
 
     # Signaling the workflow is an external side effect outside the DB transaction above, same
     # known-gap tradeoff create_case makes for start_kyc_case_workflow (see PLAN.md Phase 5

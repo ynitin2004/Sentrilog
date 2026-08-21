@@ -73,6 +73,8 @@ async def _delete_tenant(tenant_id: str) -> None:
     conn = await asyncpg.connect(dsn=_ADMIN_DSN)
     try:
         async with conn.transaction():
+            # audit_log.case_id references cases(id) with no ON DELETE clause (Phase 11).
+            await conn.execute("DELETE FROM audit_log WHERE tenant_id = $1", tenant_id)
             await conn.execute("DELETE FROM cases WHERE tenant_id = $1", tenant_id)
             await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
     finally:
@@ -228,3 +230,64 @@ async def test_finalize_case_activity_never_notifies_a_listener_on_a_different_t
         await listener_conn.close()
         await _delete_tenant(tenant_id)
         await _delete_tenant(other_tenant_id)
+
+
+async def _fetch_audit_event_types(tenant_id: str) -> list[str]:
+    conn = await asyncpg.connect(dsn=_ADMIN_DSN)
+    try:
+        rows = await conn.fetch(
+            "SELECT event_type FROM audit_log WHERE tenant_id = $1 ORDER BY id ASC", tenant_id
+        )
+        return [r["event_type"] for r in rows]
+    finally:
+        await conn.close()
+
+
+async def test_risk_score_activity_leaves_a_started_and_completed_audit_row() -> None:
+    tenant_id, case_id = await _create_tenant_and_case()
+    try:
+        await risk_score_activity(
+            RiskScoreInput(
+                tenant_id=tenant_id,
+                case_id=case_id,
+                extraction_confidence=0.99,
+                face_match_score=0.95,
+                sanctions_hit_count=0,
+            )
+        )
+        assert await _fetch_audit_event_types(tenant_id) == [
+            "risk_score.started",
+            "risk_score.completed",
+        ]
+    finally:
+        await _delete_tenant(tenant_id)
+
+
+async def test_update_case_status_activity_leaves_a_started_and_completed_audit_row() -> None:
+    tenant_id, case_id = await _create_tenant_and_case()
+    try:
+        await update_case_status_activity(
+            UpdateCaseStatusInput(tenant_id=tenant_id, case_id=case_id, status="processing")
+        )
+        assert await _fetch_audit_event_types(tenant_id) == [
+            "update_case_status.started",
+            "update_case_status.completed",
+        ]
+    finally:
+        await _delete_tenant(tenant_id)
+
+
+async def test_finalize_case_activity_leaves_a_started_and_completed_audit_row() -> None:
+    tenant_id, case_id = await _create_tenant_and_case()
+    try:
+        await finalize_case_activity(
+            FinalizeCaseInput(
+                tenant_id=tenant_id, case_id=case_id, status="approved", decision="approved"
+            )
+        )
+        assert await _fetch_audit_event_types(tenant_id) == [
+            "finalize_case.started",
+            "finalize_case.completed",
+        ]
+    finally:
+        await _delete_tenant(tenant_id)
