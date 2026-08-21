@@ -76,6 +76,9 @@ async def _delete_tenant(tenant_id: str) -> None:
     conn = await asyncpg.connect(dsn=_ADMIN_DSN)
     try:
         async with conn.transaction():
+            # audit_log.case_id references cases(id) with no ON DELETE clause (Phase 11) -- must
+            # go before cases, same reason claimed_by_reviewer_id forces cases before reviewers.
+            await conn.execute("DELETE FROM audit_log WHERE tenant_id = $1", tenant_id)
             await conn.execute("DELETE FROM review_decisions WHERE tenant_id = $1", tenant_id)
             await conn.execute("DELETE FROM webhook_deliveries WHERE tenant_id = $1", tenant_id)
             await conn.execute("DELETE FROM extractions WHERE tenant_id = $1", tenant_id)

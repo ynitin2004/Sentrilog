@@ -219,6 +219,18 @@ async def test_decision_records_review_decision_even_when_no_workflow_is_running
     assert row["decision"] == "approved"
     assert row["justification"] == "looks legitimate"
 
+    # The audit row is written before the (failing, in this test) signal attempt, precisely so
+    # this same "workflow no longer running" case still leaves a real audit trail behind.
+    async with pool.acquire() as conn, conn.transaction():
+        await conn.execute("SELECT set_config('app.tenant_id', $1, true)", tenant_a["tenant_id"])
+        audit_row = await conn.fetchrow(
+            "SELECT event_type, actor, payload FROM audit_log WHERE case_id = $1", case_id
+        )
+    assert audit_row is not None
+    assert audit_row["event_type"] == "review_decision_recorded"
+    assert audit_row["actor"] == f"reviewer:{tenant_a['reviewer_id']}"
+    assert '"decision": "approved"' in audit_row["payload"]
+
 
 # --- Case detail (GET /review/cases/{case_id}) ------------------------------------------------
 
