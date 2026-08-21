@@ -244,8 +244,27 @@ This file grows every phase — treat it as a second changelog, one for concepts
 
 ---
 
+## Phase 11 concepts
+
+### Hash-chained audit logs (tamper-evidence, not tamper-prevention)
+
+**What:** Every audit row stores a `row_hash` computed over its own fields *plus* the previous row's `row_hash` (its `prev_row_hash`). This links every row into a chain: row 2's hash depends on row 1's hash, row 3's depends on row 2's, and so on. Change anything about a historical row — its payload, its timestamp, even by one byte — and that row's own hash no longer matches what it should be, which means it no longer matches what the *next* row recorded as `prev_row_hash`. The break is detectable by simply recomputing hashes and comparing (`scripts/verify_audit_chain.py`).
+
+**Why here:** This is deliberately *tamper-evidence*, not *tamper-prevention* — nothing here stops someone with direct database access (a compromised superuser credential, an insider with production access) from editing a row. What it guarantees is that if they do, it's provable after the fact: the chain breaks at exactly the row they touched, and every row after it. That's the actual property a regulator cares about for a KYC/AML audit trail — not "this system is impossible to tamper with" (no software-only mechanism can promise that against someone with full DB access), but "if it was tampered with, we can prove it and point to exactly where." This project also had to solve a real concurrency problem to make the chain safe to write to from multiple processes at once — see `services/pipeline/audit.py`'s `pg_advisory_xact_lock` comment for why a naive "read the last hash, then insert" is a race.
+
+**Read more:** <https://en.wikipedia.org/wiki/Hash_chain>
+
+### Row-level security scopes *every* connection, including your own tooling
+
+**What:** Once RLS is enabled on a table with a policy like `USING (tenant_id = current_setting('app.tenant_id')::uuid)`, *every* query against it — from the application, from a script, from a `psql` session — is filtered by that policy, unless the connecting role is a superuser or the table's owner (RLS is a no-op for those, by design). There's no such thing as "RLS applies to normal requests but not to my one-off script" unless the script explicitly connects as a role RLS doesn't apply to.
+
+**Why here:** `scripts/verify_audit_chain.py`'s first draft connected using the application's own `sentrilog_app` role — the same role every API request uses — and silently reported "chain OK" for a tenant that actually had real audit rows, because a connection with no `app.tenant_id` ever set matches *no* tenant's rows under that RLS policy. Zero rows found isn't the same as zero rows existing, and the script had no way to tell the difference from the outside; it just looked like success. The fix — connecting as the Postgres superuser role instead, the same one this project's own test cleanup already uses to bypass RLS — is the correct shape for this specific tool: an audit-chain verifier is inherently an out-of-band, elevated-access operation, not a normal tenant-scoped request, and it should look like one.
+
+**Read more:** <https://www.postgresql.org/docs/current/ddl-rowsecurity.html>
+
+---
+
 ## Coming up later (named now so you know to watch for them)
 
-- **Immutable audit trail via hash chaining** (Phase 11) — `row_hash`/`prev_row_hash` linking every audit row to the one before it, so tampering with history breaks the chain.
 - **OpenTelemetry tracing** (Phase 12) — following one request across multiple services/processes.
 - **Terraform modules & remote state** (Phase 13) — infrastructure as version-controlled code.
