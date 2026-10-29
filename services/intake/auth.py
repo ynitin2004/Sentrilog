@@ -1,7 +1,7 @@
 import hashlib
 from dataclasses import dataclass
 
-from fastapi import Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 
 from . import db
 
@@ -101,3 +101,28 @@ async def require_any_tenant(authorization: str | None = Header(default=None)) -
         return str(api_key_row["tenant_id"])
 
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or revoked token")
+
+
+# Roles that may actually change a case's outcome. 'auditor' is deliberately excluded: an
+# auditor's job in a KYC/AML system is to inspect the trail, not to approve or reject the cases
+# in it, and before Phase 12 the role column was resolved and carried on every request but never
+# checked -- so an auditor token could claim and decide exactly like a reviewer's.
+_DECISION_MAKER_ROLES = frozenset({"reviewer", "admin"})
+
+
+async def require_decision_maker(
+    reviewer: ReviewerAuthContext = Depends(require_reviewer),
+) -> ReviewerAuthContext:
+    """403, not 404, unlike the cross-tenant checks elsewhere in this service.
+
+    404-not-403 is right for cross-tenant access because the *existence* of another tenant's
+    case is itself privileged information. Here the caller is inside their own tenant and can
+    already see the case in their own queue, so there's nothing to conceal -- hiding it as a 404
+    would just make a legitimate reviewer's permission problem undebuggable.
+    """
+    if reviewer.role not in _DECISION_MAKER_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Role '{reviewer.role}' may not claim or decide cases",
+        )
+    return reviewer
