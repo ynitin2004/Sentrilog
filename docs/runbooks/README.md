@@ -4,11 +4,11 @@ Operational procedures for the failure modes Phase 12 examined. Each runbook sta
 system actually does (traced to the code that decides it), how to recognise the failure, and how
 to recover.
 
-| Runbook | Failure |
-|---|---|
-| [worker-died-mid-case.md](worker-died-mid-case.md) | A pipeline worker process dies while cases are in flight |
-| [qdrant-unavailable.md](qdrant-unavailable.md) | Qdrant (sanctions vector search) is unreachable |
-| [postgres-unavailable.md](postgres-unavailable.md) | Postgres is unreachable |
+| Runbook | Failure | Verified how |
+|---|---|---|
+| [worker-died-mid-case.md](worker-died-mid-case.md) | A pipeline worker process dies while cases are in flight | Phase 5, `scripts/resilience_test_worker.py` (kill and restart a real worker mid-activity) |
+| [qdrant-unavailable.md](qdrant-unavailable.md) | Qdrant (sanctions vector search) is unreachable | Phase 12, `scripts/chaos_test.py qdrant` — **passes, no caveats** |
+| [postgres-unavailable.md](postgres-unavailable.md) | Postgres is unreachable | Phase 12, `scripts/chaos_test.py postgres` — passes, but only for "the whole data tier vanished"; see that runbook's first known gap |
 
 ## The retry policies these all depend on
 
@@ -24,9 +24,19 @@ Every behaviour below follows from two policies in
 database give up after ~3 seconds, while the ones calling external model APIs retry for up to 20
 minutes. That is backwards relative to how these dependencies actually fail — a Postgres restart
 or failover is both more common and more quickly self-resolving than a Gemini outage, yet it is
-the database-writing activities that will not survive one. Phase 12 recorded this rather than
-changing it, because widening the DB retry window changes workflow timing characteristics that
-the Phase 5 design settled deliberately; see the Phase 12 changelog in `PLAN.md`.
+the database-writing activities that have the smaller budget to survive one. Phase 12 recorded
+this rather than changing it, because widening the DB retry window changes workflow timing
+characteristics that the Phase 5 design settled deliberately; see the Phase 12 changelog in
+`PLAN.md`.
+
+**One important correction from actually measuring it.** The 3-second budget only bites when
+Temporal is still running to spend it. In this deployment Temporal's persistence is the *same*
+Postgres, so a database outage freezes the engine too, no retries are consumed, and an in-flight
+case resumes and completes on its own — confirmed by `scripts/chaos_test.py postgres` across a
+12-second outage. The strand scenario the policies imply belongs to the split-store topology
+production will have, and is therefore still untested. A passing chaos test here does **not**
+mean the retry budget is adequate; see the first known gap in
+[postgres-unavailable.md](postgres-unavailable.md).
 
 No application code retries database or Qdrant calls (`services/*/db.py` and
 `services/screening/qdrant_store.py` are plain clients). Temporal's activity retry is the entire

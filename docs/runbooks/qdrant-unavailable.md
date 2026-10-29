@@ -21,6 +21,11 @@ never auto-approved.** It goes to a human, with the reason recorded. Nothing sil
 precisely because `risk_score_activity` cannot (it has no state for "never ran" distinct from
 "0 hits").
 
+**Verified, not reasoned about.** `scripts/chaos_test.py qdrant` stops the real `qdrant`
+container with a case in flight and asserts the case lands in `needs_review`. It passes. This is
+the one dependency failure in this directory whose documented behaviour has been confirmed
+end-to-end against the real container, in the real topology, with no caveats attached.
+
 ## Detecting it
 
 - Review queue volume climbs, with cases whose parked reason is
