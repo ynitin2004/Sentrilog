@@ -122,18 +122,25 @@ async def test_collection_routes_never_include_another_tenants_rows(
         "/webhooks", json={"url": "https://a-only.example.com/hook"}, headers=_auth(a["api_key"])
     )
 
+    # Each listing's own identity field -- /cases keys its rows `case_id` while the admin
+    # collections use `id`, so the key is part of the table rather than assumed uniform.
     key_listings = [
-        ("/cases", a["api_key"], b["api_key"]),
-        ("/api-keys", a["api_key"], b["api_key"]),
-        ("/reviewers", a["api_key"], b["api_key"]),
-        ("/webhooks", a["api_key"], b["api_key"]),
+        ("/cases", "case_id"),
+        ("/api-keys", "id"),
+        ("/reviewers", "id"),
+        ("/webhooks", "id"),
     ]
 
     failures = []
-    for path, a_token, b_token in key_listings:
-        a_ids = {row["id"] for row in (await client.get(path, headers=_auth(a_token))).json()}
-        b_ids = {row["id"] for row in (await client.get(path, headers=_auth(b_token))).json()}
-        overlap = a_ids & b_ids
+    for path, id_field in key_listings:
+        a_rows = (await client.get(path, headers=_auth(a["api_key"]))).json()
+        b_rows = (await client.get(path, headers=_auth(b["api_key"]))).json()
+        # An empty listing on both sides would make the overlap check vacuously pass, so prove
+        # tenant A actually has rows here before concluding anything about isolation.
+        if not a_rows:
+            failures.append(f"{path} returned nothing for the tenant that owns rows there")
+            continue
+        overlap = {row[id_field] for row in a_rows} & {row[id_field] for row in b_rows}
         if overlap:
             failures.append(f"{path} leaked {len(overlap)} row(s) across tenants")
 

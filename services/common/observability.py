@@ -82,7 +82,62 @@ def configure_logging(service_name: str, *, level: int = logging.INFO) -> None:
     structlog.contextvars.bind_contextvars(service=service_name)
 
 
+class _LateBoundStdout:
+    """Resolves `sys.stdout` at write time instead of at exporter construction.
+
+    `ConsoleSpanExporter()` defaults to `out=sys.stdout`, capturing whatever object is bound to
+    that name when `configure_tracing` runs. `BatchSpanProcessor` then flushes on a background
+    thread and again from an `atexit` hook, both of which can fire *after* that captured stream
+    is gone -- pytest's capture plugin closes its replacement stream at the end of a test, and
+    interpreter shutdown closes the real one. The result was a `ValueError: I/O operation on
+    closed file` traceback printed after an otherwise-clean test run.
+
+    Dropping the write is the right answer here specifically because this is a console debug
+    exporter: a span line lost during teardown costs nothing, and the only alternative at that
+    point is the traceback. Nothing durable routes through here -- the tamper-evident record is
+    Phase 11's `audit_log`, which is a transactional database write and does not tolerate loss.
+    Phase 13's OTLP exporter writes to a socket rather than a borrowed stream and so doesn't
+    share this failure mode.
+    """
+
+    def write(self, text: str) -> int:
+        stream = sys.stdout
+        if stream is None or stream.closed:
+            return 0
+        try:
+            return stream.write(text)
+        except ValueError:  # the stream closed between the check and the write
+            return 0
+
+    def flush(self) -> None:
+        stream = sys.stdout
+        if stream is None or stream.closed:
+            return
+        try:
+            stream.flush()
+        except ValueError:
+            pass
+
+
+_tracing_configured = False
+
+
 def configure_tracing(service_name: str) -> None:
+    """Idempotent: OpenTelemetry permits exactly one global TracerProvider and merely *warns*
+    when a second is set, keeping the first. Several test modules import an app that calls this
+    at import time, so without the guard a run logs that warning repeatedly while stacking
+    another exporter's worth of background flushing on each call.
+    """
+    global _tracing_configured
+    if _tracing_configured:
+        return
+
     provider = TracerProvider(resource=Resource.create({"service.name": service_name}))
-    provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+    # `out` is annotated IO[Any], but ConsoleSpanExporter only ever calls .write() and .flush()
+    # on it -- the annotation is wider than the contract it actually uses. Satisfying IO[Any]
+    # properly would mean implementing a dozen methods (read, seek, fileno, the context-manager
+    # protocol) that this writer has no meaning for, so the narrow ignore is the honest option.
+    exporter = ConsoleSpanExporter(out=_LateBoundStdout())  # type: ignore[arg-type]
+    provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
+    _tracing_configured = True
