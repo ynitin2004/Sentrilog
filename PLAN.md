@@ -272,7 +272,7 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 | 9. Backend endpoints + frontend integration | **Done** | `v0.9.0` | `3f5a6e7` | 2026-08-17 |
 | 10. Real-time (SSE) & production hardening | **Done** | `v0.10.0` | `325c3d8` | 2026-08-18 |
 | 11. Audit trail | **Done** | `v0.11.0` | `f4b005a` | 2026-08-20 |
-| 12. Hardening | **Done** | `v0.12.0` | `TBD` | 2026-10-29 |
+| 12. Hardening | **Done** | `v0.12.0` | `3d57de7` | 2026-10-29 |
 | 13. AWS infra + deploy | Not started | — | — | — |
 
 ## 11. Changelog
@@ -624,7 +624,7 @@ Closes the multi-tenancy gap flagged above, before any Phase 3 code depends on t
 - **Known gap (explicit, not silent):** the verification script's superuser DSN is the same hardcoded local-dev credential every test file's cleanup helper already uses (`postgresql://sentrilog:sentrilog@localhost:5432/sentrilog`) — fine for this environment, but a real deployment needs this sourced from secrets management with a dedicated, narrowly-scoped read-only auditor role rather than the full table-owner superuser. Out of scope here (Phase 13's AWS/secrets-management territory per §9), but named so it isn't mistaken for a production-ready credential story.
 - **Known gap (explicit, not silent):** retryable failures inside `extract_document_activity`/`face_match_activity` (the documented "document not yet uploaded, Temporal will retry" `ApplicationError`) produce a real `.failed` audit row on every retry attempt, not just on a genuine terminal failure — technically accurate (that specific attempt did fail) but means a slow upload can leave several `.failed` rows in the trail before a `.completed` one. Not fixed here: distinguishing "expected retry" from "real failure" in the audit trail would need a new event-type convention not currently justified by any consumer of this data.
 
-### Phase 12 — 2026-10-29 (`v0.12.0`, commit `TBD`)
+### Phase 12 — 2026-10-29 (`v0.12.0`, commit `3d57de7`)
 
 **Design decisions made while implementing this:**
 
