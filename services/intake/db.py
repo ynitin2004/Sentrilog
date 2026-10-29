@@ -10,7 +10,9 @@ _pool: asyncpg.Pool | None = None
 
 async def init_pool() -> None:
     global _pool
-    _pool = await asyncpg.create_pool(dsn=settings.database_url, min_size=1, max_size=10)
+    _pool = await asyncpg.create_pool(
+        dsn=settings.database_url.get_secret_value(), min_size=1, max_size=10
+    )
 
 
 async def close_pool() -> None:
@@ -53,7 +55,7 @@ async def raw_connection() -> asyncpg.Connection:
     connection from tenant_connection() gets released back to the pool (and its LISTEN state
     reset) as soon as that async-with block exits, which is wrong for something long-lived.
     """
-    return await asyncpg.connect(dsn=settings.database_url)
+    return await asyncpg.connect(dsn=settings.database_url.get_secret_value())
 
 
 @asynccontextmanager

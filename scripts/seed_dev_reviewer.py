@@ -28,7 +28,7 @@ async def main() -> None:
     email = sys.argv[2] if len(sys.argv) > 2 else "reviewer@dev.local"
     role = sys.argv[3] if len(sys.argv) > 3 else "reviewer"
 
-    conn = await asyncpg.connect(dsn=settings.database_url)
+    conn = await asyncpg.connect(dsn=settings.database_url.get_secret_value())
     try:
         async with conn.transaction():
             await conn.execute("SELECT set_config('app.tenant_id', $1, true)", tenant_id)
