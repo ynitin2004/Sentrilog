@@ -11,6 +11,7 @@ Only services.pipeline.workflows.contracts (plain dataclasses, no heavy imports)
 """
 
 from temporalio.client import Client
+from temporalio.contrib.opentelemetry import TracingInterceptor
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
 from ..pipeline.workflows.contracts import KYC_CASE_WORKFLOW_NAME, KycCaseInput
@@ -23,8 +24,14 @@ _client: Client | None = None
 async def get_temporal_client() -> Client:
     global _client
     if _client is None:
+        # TracingInterceptor is what actually stitches a trace together across the process
+        # boundary: it injects the current span context into the workflow-start/signal payload
+        # here, and the worker's own interceptor extracts it, so one trace covers the HTTP
+        # request, the workflow, and every activity it runs -- three different processes.
         _client = await Client.connect(
-            settings.temporal_address, namespace=settings.temporal_namespace
+            settings.temporal_address,
+            namespace=settings.temporal_namespace,
+            interceptors=[TracingInterceptor()],
         )
     return _client
 
