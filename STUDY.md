@@ -264,7 +264,58 @@ This file grows every phase — treat it as a second changelog, one for concepts
 
 ---
 
+## Phase 12 concepts
+
+### Distributed tracing: one trace that survives crossing a process boundary
+
+**What:** A *trace* is one logical operation (here: one KYC case) and a *span* is one timed step inside it. Each span carries the trace ID it belongs to plus its parent span's ID, so the tree can be reconstructed afterwards. The hard part isn't timing the steps, it's that the steps happen in different processes: the intake API handles `POST /cases`, then a Temporal worker in a separate process runs the activities. For the worker's spans to join the API's trace, the trace context has to be *serialized into the workflow's metadata* by the client and read back out by the worker. That is what Temporal's `TracingInterceptor` does, which is why it has to be registered in two places — on the `Client` in `services/intake/temporal.py` and on both the `Client` and every `Worker` in `services/pipeline/workflows/worker.py`. Register it on one side only and you get two unrelated traces instead of one.
+
+**Why here:** A case touches the API, Postgres, Temporal, Gemini, Qdrant and a webhook delivery. When one takes 40 seconds, "which step" is the only question worth asking, and no single process's logs can answer it. Pairing tracing with structured logging is what makes it usable before a trace backend exists: `_add_trace_context` in `services/common/observability.py` stamps the active `trace_id`/`span_id` onto every JSON log line, so grepping a trace ID is already a poor substitute for a trace view. The console exporter is deliberately a placeholder — a real backend (X-Ray/Jaeger) is Phase 13 — but the spans and their cross-process propagation are real now, and that is the part that is expensive to retrofit.
+
+**Read more:** <https://opentelemetry.io/docs/concepts/signals/traces/>
+
+### Structured logging: log lines as records, not sentences
+
+**What:** Instead of `logger.info(f"created case {case_id} for {tenant_id}")`, you emit `log.info("case_created", case_id=..., tenant_id=...)` and render it as JSON. The difference is queryability: the first is a string you have to mine with a regex, the second is a record you can filter by field. `structlog` adds two things beyond the formatting that matter. `contextvars.merge_contextvars` lets you bind a value *once* per request and have every later log line in that request carry it automatically, instead of threading it through every function signature. And `ProcessorFormatter` routes plain stdlib `logging` calls — uvicorn's, asyncpg's, temporalio's, none of which know structlog exists — through the same processor chain, so one process never interleaves two log formats on the same stdout.
+
+**Why here:** Nearly every operational question in a multi-tenant system is a per-tenant one, and "is this slow for everyone or just this tenant?" is unanswerable from prose logs and trivial from `tenant_id`-tagged JSON. This phase also produced a good lesson in how telemetry code fails: the console span exporter captured `sys.stdout` at construction, and then a background flush thread wrote to that stream *after* pytest had closed it, printing `ValueError: I/O operation on closed file` after an otherwise-clean test run. The fix (a late-binding writer in `observability.py`) is small; the point is that observability plumbing has its own lifecycle bugs, and they surface at shutdown where they are easiest to wave away as noise.
+
+**Read more:** <https://www.structlog.org/en/stable/contextvars.html>
+
+### `SecretStr` and a provider seam: making a leak the unusual case
+
+**What:** Pydantic's `SecretStr` wraps a value so that its `repr()` is `**********`; the real value only comes out of an explicit `.get_secret_value()`. That matters because credentials rarely escape through someone deliberately printing them — they escape through a traceback rendering a settings object, a debug `print(settings)`, or a `model_dump()` landing in a log aggregator. Separately, `pydantic-settings` exposes `settings_customise_sources()`, a hook for inserting your own `PydanticBaseSettingsSource` into the resolution order. `services/common/settings_base.py` uses it to put a `SecretsProvider` ahead of environment variables, so *where a secret comes from* is one swappable object (`EnvSecretsProvider`, `JsonFileSecretsProvider`, and later a real Secrets Manager client) rather than a decision baked into every read site.
+
+**Why here:** The seam is the deliverable; the file-based provider is just the first thing plugged into it. Phase 13 moves these to AWS Secrets Manager, and the only thing that should have to change is which provider `get_secrets_provider()` returns — which is only true if nothing in the application reads `os.environ` for a credential directly. Building the indirection while the implementation is still "read a JSON file" is what keeps that migration a one-line change instead of an audit of every config access in the codebase.
+
+**Read more:** <https://docs.pydantic.dev/latest/concepts/pydantic_settings/#customise-settings-sources>
+
+### `asyncio.to_thread` shares one process-wide thread pool, and it is small
+
+**What:** `asyncio.to_thread` is the standard way to call blocking code from async code without stalling the event loop — it hands the call to an executor. The detail that bites: unless you install your own, that executor is the loop's *default* `ThreadPoolExecutor`, which is shared process-wide and sized `min(32, cpu_count + 4)`. Not per-call, not per-task, and not settable from anywhere in your own configuration. Concurrent `to_thread` calls past that size simply queue — invisibly, with no error and no log line, only latency.
+
+**Why here:** `extract_document_activity` pushes all three of its blocking calls (boto3, EasyOCR, the Gemini client) through `to_thread`. `scripts/load_test_extraction.py` sweeps concurrency across that boundary and the throughput curve flatlines *exactly* at 32: raising concurrency from 32 to 64 or 128 buys a measured 1.00x. The operational consequence is specific and non-obvious — an operator who sets `--max-concurrent-activities 64` to push extraction throughput gets nothing, because the real ceiling is a number that neither Temporal nor this project's settings control. This is the kind of bottleneck only measurement finds; reading the code suggests the activity slot limit is the knob, and it isn't.
+
+**Read more:** <https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.set_default_executor>
+
+### Queue partitioning isolates I/O, but only separate processes isolate CPU
+
+**What:** The standard fix for a noisy neighbour is to stop sharing a queue: give each tenant (or plan tier) its own queue with its own dedicated worker capacity, so one tenant's burst can only exhaust its own share. That works — but it isolates *queue slots*, and a slot is not the only shared resource. Python's GIL means that if several workers run in one process, CPU-bound work in any of them blocks all of them regardless of which queue dispatched it.
+
+**Why here:** `scripts/load_test_noisy_neighbor.py` measures exactly this, holding total capacity equal and varying only its arrangement. For I/O-bound activities, partitioning takes the quiet tenant's p95 degradation from 3.74x down to 1.14x — the design works as intended. For CPU-bound activities it only gets from 5.44x to 2.51x, because `worker.py` runs all three tiers' workers in one process and they all contend for one GIL. The useful general lesson: "we sharded the queues" is a complete answer only for work that spends its time waiting on something else. Anything that burns local CPU needs process-level or host-level separation, which is why the `--tier` flag exists even though nothing in `docker compose` passes it yet, and why per-tier worker pools are Phase 13 scope rather than a config change.
+
+**Read more:** <https://docs.temporal.io/develop/python/core-application#task-queues>
+
+### Tenant isolation and role authorization are different bugs, and want different status codes
+
+**What:** Two separate questions hide behind "is this caller allowed?" — *whose data is this?* and *what may this caller do inside their own tenant?* They fail differently and should answer differently. A cross-tenant request gets **404**, not 403, because the existence of another tenant's case is itself privileged: a 403 confirms the ID is real and lets an attacker enumerate. A within-tenant permission failure gets **403**, because the caller can already see that resource in their own queue, so there is nothing left to conceal and a 404 would just be confusing.
+
+**Why here:** Phase 7 added a `role` column (`reviewer`/`admin`/`auditor`), resolved it from the database, and attached it to every authenticated request — and then never checked it. Tenant isolation had been tested from Phase 3 onward, so the system looked locked down while an `auditor` token could claim and approve cases exactly like a reviewer's. The lesson is that a carried-but-unchecked attribute is worse than an absent one, because it looks like enforcement in both the schema and the request context. `tests/intake/test_authz_matrix.py` is deliberately written as a table of every tenant-scoped route for a related reason: scattered per-endpoint checks cannot answer "is every endpoint covered?", so an uncovered route stays invisible until someone thinks to go looking.
+
+**Read more:** <https://cheatsheetseries.owasp.org/cheatsheets/Authorization_Testing_Automation_Cheat_Sheet.html>
+
+---
+
 ## Coming up later (named now so you know to watch for them)
 
-- **OpenTelemetry tracing** (Phase 12) — following one request across multiple services/processes.
 - **Terraform modules & remote state** (Phase 13) — infrastructure as version-controlled code.

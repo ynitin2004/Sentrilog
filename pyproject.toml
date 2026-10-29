@@ -23,6 +23,11 @@ dependencies = [
     # Used at runtime by deliver_webhooks_activity (Phase 7), not just by tests -- previously a
     # dev-only dependency via FastAPI's TestClient/ASGITransport.
     "httpx>=0.27.0",
+    "opentelemetry-api>=1.44.0",
+    "opentelemetry-sdk>=1.44.0",
+    "opentelemetry-instrumentation-fastapi>=0.65b0",
+    "opentelemetry-instrumentation-httpx>=0.65b0",
+    "structlog>=26.1.0",
 ]
 
 [dependency-groups]

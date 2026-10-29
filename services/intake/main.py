@@ -1,17 +1,20 @@
 import asyncio
 import json
 import secrets
-from collections.abc import AsyncGenerator, AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Literal
 from uuid import UUID
 
 import asyncpg
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
+import structlog
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from temporalio.service import RPCError, RPCStatusCode
 
+from services.common.observability import configure_logging, configure_tracing
 from services.pipeline.workflows.contracts import (
     SUBMIT_REVIEW_DECISION_SIGNAL_NAME,
     ReviewDecisionSignal,
@@ -24,6 +27,7 @@ from .auth import (
     hash_api_key,
     require_any_tenant,
     require_api_key,
+    require_decision_maker,
     require_reviewer,
 )
 from .config import settings
@@ -58,6 +62,10 @@ from .schemas import (
 from .storage import presigned_get_url, presigned_put_url
 from .temporal import get_temporal_client, start_kyc_case_workflow, workflow_id_for_case
 
+configure_logging("intake-api")
+configure_tracing("intake-api")
+log = structlog.get_logger()
+
 _rate_limiter = InMemoryRateLimiter(
     limit=settings.rate_limit_requests, window_seconds=settings.rate_limit_window_seconds
 )
@@ -73,6 +81,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Sentrilog Intake API", lifespan=lifespan)
+FastAPIInstrumentor.instrument_app(app)
 
 # The reviewer UI (webui/reviewer.html) is a standalone static file opened directly in a
 # browser, not served by this app -- it sends Origin: null / a file:// origin. Auth here is a
@@ -86,6 +95,19 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def _clear_log_context(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    # contextvars are per-asyncio-Task, and FastAPI/Starlette runs each request as its own
+    # Task, so tenant_id/case_id bound via structlog.contextvars.bind_contextvars() during one
+    # request can't leak into a concurrent one -- but explicitly clearing at the start of every
+    # request (structlog's own recommended pattern) means a value bound by handler code earlier
+    # in this same request's lifecycle never lingers past that request either.
+    structlog.contextvars.clear_contextvars()
+    return await call_next(request)
+
+
 def _check_rate_limit(auth: AuthContext) -> None:
     _check_rate_limit_key(auth.api_key_id)
 
@@ -93,6 +115,7 @@ def _check_rate_limit(auth: AuthContext) -> None:
 def _check_rate_limit_key(key: str) -> None:
     allowed, retry_after = _rate_limiter.check(key)
     if not allowed:
+        log.warning("rate_limit_exceeded", key=key, retry_after=retry_after)
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Rate limit exceeded",
@@ -147,6 +170,7 @@ async def create_case(
 
         assert case_row is not None
         case_id = str(case_row["id"])
+        structlog.contextvars.bind_contextvars(tenant_id=auth.tenant_id, case_id=case_id)
 
         if is_replay:
             existing = await conn.fetch(
@@ -179,6 +203,7 @@ async def create_case(
     # Phase 5 changelog). start_kyc_case_workflow is itself idempotent on case_id, so replays
     # (including this same request retried by the client) don't double-start anything.
     await start_kyc_case_workflow(tenant_id=auth.tenant_id, case_id=case_id, plan_tier=plan_tier)
+    log.info("case_created" if not is_replay else "case_create_replayed", plan_tier=plan_tier)
 
     if not is_replay:
         # Not written for a replay (an idempotency-key retry of an already-created case) -- the
@@ -413,7 +438,7 @@ async def get_review_case_detail(
 
 @app.post("/review/cases/{case_id}/claim", response_model=ReviewQueueCase)
 async def claim_review_case(
-    case_id: str, reviewer: ReviewerAuthContext = Depends(require_reviewer)
+    case_id: str, reviewer: ReviewerAuthContext = Depends(require_decision_maker)
 ) -> ReviewQueueCase:
     """Advisory only (see PLAN.md): claiming is a UI signal, not a lock -- the decision
     endpoint below doesn't require a prior claim, so a stale/abandoned claim can never block a
@@ -421,6 +446,7 @@ async def claim_review_case(
     overwrites the previous claim."""
     _check_rate_limit_key(reviewer.reviewer_id)
     _parse_case_id_or_404(case_id)
+    structlog.contextvars.bind_contextvars(tenant_id=reviewer.tenant_id, case_id=case_id)
 
     async with db.tenant_connection(reviewer.tenant_id) as conn:
         row = await conn.fetchrow(
@@ -446,10 +472,12 @@ async def claim_review_case(
             )
 
     if row is None:
+        log.info("claim_rejected", reason="not_found_or_not_awaiting_review")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Case not found or not awaiting review"
         )
 
+    log.info("case_claimed")
     return ReviewQueueCase(
         case_id=str(row["id"]),
         subject_name=row["subject_name"],
@@ -465,10 +493,11 @@ async def claim_review_case(
 async def submit_review_decision(
     case_id: str,
     payload: ReviewDecisionRequest,
-    reviewer: ReviewerAuthContext = Depends(require_reviewer),
+    reviewer: ReviewerAuthContext = Depends(require_decision_maker),
 ) -> ReviewDecisionResponse:
     _check_rate_limit_key(reviewer.reviewer_id)
     _parse_case_id_or_404(case_id)
+    structlog.contextvars.bind_contextvars(tenant_id=reviewer.tenant_id, case_id=case_id)
 
     async with db.tenant_connection(reviewer.tenant_id) as conn:
         case_status = await conn.fetchval("SELECT status FROM cases WHERE id = $1", case_id)
@@ -500,6 +529,7 @@ async def submit_review_decision(
         actor=f"reviewer:{reviewer.reviewer_id}",
         payload={"decision": payload.decision, "justification": payload.justification},
     )
+    log.info("review_decision_recorded", decision=payload.decision)
 
     # Signaling the workflow is an external side effect outside the DB transaction above, same
     # known-gap tradeoff create_case makes for start_kyc_case_workflow (see PLAN.md Phase 5
@@ -519,10 +549,16 @@ async def submit_review_decision(
         )
     except RPCError as exc:
         if exc.status == RPCStatusCode.NOT_FOUND:
+            # Operationally important, not just a client-facing 409: the decision is durably
+            # recorded but the workflow that would act on it is gone, which is exactly the
+            # divergence the "worker died mid-case" runbook (docs/runbooks/) tells an operator
+            # how to reconcile.
+            log.warning("decision_workflow_missing", decision=payload.decision)
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Case's workflow is no longer running; decision recorded but not applied",
             ) from exc
+        log.error("decision_signal_failed", error=str(exc))
         raise
 
     return ReviewDecisionResponse(

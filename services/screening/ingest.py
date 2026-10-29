@@ -25,7 +25,7 @@ def ingest_sample_list(client: EmbeddingClient) -> int:
 
 if __name__ == "__main__":
     embedding_client = GeminiEmbeddingClient(
-        api_key=settings.gemini_api_key,
+        api_key=settings.gemini_api_key.get_secret_value(),
         model=settings.gemini_embedding_model,
         dimensions=settings.embedding_dimensions,
     )

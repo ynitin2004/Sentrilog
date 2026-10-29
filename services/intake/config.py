@@ -1,13 +1,17 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, SecretStr
+
+from services.common.settings_base import ServiceSettings
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+class Settings(ServiceSettings):
+    # secret=True routes these through the secrets provider (services/common/secrets.py); the
+    # rest are plain configuration and stay on the normal env/.env path. database_url counts as
+    # a secret because the DSN embeds the password.
+    database_url: SecretStr = Field(json_schema_extra={"secret": True})
+    s3_secret_key: SecretStr = Field(json_schema_extra={"secret": True})
 
-    database_url: str
     s3_endpoint_url: str
     s3_access_key: str
-    s3_secret_key: str
     s3_bucket: str
     s3_region: str = "us-east-1"
     rate_limit_requests: int = 60

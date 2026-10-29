@@ -10,8 +10,10 @@ the VLM path (see extract.py) rather than being trusted.
 
 import re
 from functools import lru_cache
+from typing import TYPE_CHECKING, Any
 
-import easyocr
+if TYPE_CHECKING:  # pragma: no cover - typing only, never imported at runtime
+    import easyocr
 
 # MRZ uses a fixed, constrained character set -- restricting recognition to it (rather than
 # general alphanumeric + punctuation) meaningfully improves accuracy on this specific text.
@@ -23,9 +25,20 @@ OCRResult = tuple[list[list[float]], str, float]
 
 
 @lru_cache(maxsize=1)
-def _get_reader() -> easyocr.Reader:
+def _get_reader() -> "easyocr.Reader":
     # Built once and cached: loading the model is slow (seconds) and memory-heavy (torch),
     # not something to redo on every call.
+    #
+    # `import easyocr` lives in here rather than at module scope because it pulls in torch,
+    # which costs seconds of import time and hundreds of MB of RSS. Every module that imports
+    # `activities.py` -- the whole workflow test suite, scripts/chaos_test.py -- used to pay
+    # that just to reach a function it never calls, and in an environment where torch's native
+    # DLLs won't load at all (an endpoint-security Application Control policy blocking
+    # torch_python.dll, which is how this surfaced) the import error took out five unrelated
+    # test modules at collection time. Deferring it to first real OCR call means only code that
+    # actually reads an MRZ depends on torch being loadable.
+    import easyocr
+
     return easyocr.Reader(["en"], gpu=False, verbose=False)
 
 
@@ -58,7 +71,7 @@ def read_mrz_lines(image_bytes: bytes) -> tuple[str, str] | None:
     must still run the result through mrz.parse_td3() and check .valid -- this function makes
     no claim about correctness, only about having found *something* worth checksum-validating.
     """
-    reader = _get_reader()
+    reader: Any = _get_reader()
     results: list[OCRResult] = reader.readtext(
         image_bytes, allowlist=_MRZ_ALLOWLIST, detail=1, paragraph=False
     )

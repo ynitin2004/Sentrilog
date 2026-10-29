@@ -22,7 +22,7 @@ async def main() -> None:
     name = sys.argv[1] if len(sys.argv) > 1 else "Dev Tenant"
     slug = sys.argv[2] if len(sys.argv) > 2 else "dev-tenant"
 
-    conn = await asyncpg.connect(dsn=settings.database_url)
+    conn = await asyncpg.connect(dsn=settings.database_url.get_secret_value())
     try:
         # api_keys has row-level security requiring app.tenant_id to match the row being
         # written (002_multi_tenancy.sql) -- even this bootstrap script has to set it before

@@ -141,7 +141,7 @@ def test_real_gemini_and_qdrant_end_to_end(test_collection: str) -> None:
     from services.screening.embeddings import GeminiEmbeddingClient
 
     client = GeminiEmbeddingClient(
-        api_key=settings.gemini_api_key,
+        api_key=settings.gemini_api_key.get_secret_value(),
         model=settings.gemini_embedding_model,
         dimensions=settings.embedding_dimensions,
     )

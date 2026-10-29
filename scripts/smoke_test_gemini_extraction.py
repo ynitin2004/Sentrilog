@@ -42,7 +42,9 @@ def build_synthetic_id_image() -> bytes:
 
 
 def main() -> None:
-    client = GeminiVLMClient(api_key=settings.gemini_api_key, model=settings.gemini_model)
+    client = GeminiVLMClient(
+        api_key=settings.gemini_api_key.get_secret_value(), model=settings.gemini_model
+    )
     image_bytes = build_synthetic_id_image()
 
     result = extract_with_vlm(

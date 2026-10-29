@@ -139,7 +139,9 @@ _WEBHOOK_MAX_ATTEMPTS = 3
 _WEBHOOK_RETRY_BACKOFF_SECONDS = 1.0
 
 
-_vlm_client = GeminiVLMClient(api_key=settings.gemini_api_key, model=settings.gemini_model)
+_vlm_client = GeminiVLMClient(
+    api_key=settings.gemini_api_key.get_secret_value(), model=settings.gemini_model
+)
 _face_match_client: FaceMatchClient | None = None
 _embedding_client: "EmbeddingClient | None" = None
 
@@ -272,7 +274,7 @@ async def sanctions_screen_activity(input: SanctionsScreenInput) -> SanctionsScr
         global _embedding_client
         if _embedding_client is None:
             _embedding_client = GeminiEmbeddingClient(
-                api_key=screening_settings.gemini_api_key,
+                api_key=screening_settings.gemini_api_key.get_secret_value(),
                 model=screening_settings.gemini_embedding_model,
                 dimensions=screening_settings.embedding_dimensions,
             )

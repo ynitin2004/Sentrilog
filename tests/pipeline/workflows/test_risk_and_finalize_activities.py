@@ -35,7 +35,7 @@ async def _listen_for_one_case_event() -> tuple[asyncpg.Connection, "asyncio.Que
     same database can observe it) and returns it plus a queue fed by the notification.
     """
     queue: asyncio.Queue[str] = asyncio.Queue()
-    conn = await asyncpg.connect(dsn=settings.database_url)
+    conn = await asyncpg.connect(dsn=settings.database_url.get_secret_value())
     await conn.add_listener("case_events", lambda _c, _p, _ch, payload: queue.put_nowait(payload))
     return conn, queue
 
