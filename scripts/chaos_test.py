@@ -127,17 +127,41 @@ async def _create_tenant_and_case() -> tuple[str, str]:
         await conn.close()
 
 
-async def _cleanup_tenant(tenant_id: str) -> None:
+async def _cleanup_tenant(tenant_id: str, *, attempts: int = 3) -> None:
+    """Delete everything this scenario created, and verify it actually went.
+
+    `audit_log.case_id` references `cases(id)` with no ON DELETE, so the child rows have to go
+    first -- but a chaos scenario leaves activities in flight, and an audit row inserted between
+    the `audit_log` delete and the `cases` delete makes the latter violate that FK and rolls the
+    whole transaction back. That is exactly what happened: two chaos tenants survived a run that
+    reported success, because nothing checked. Retrying closes the window, and the final count
+    check means a silent leak fails loudly instead of quietly growing the dev database.
+    """
+    for attempt in range(1, attempts + 1):
+        conn = await asyncpg.connect(dsn=_ADMIN_DSN)
+        try:
+            async with conn.transaction():
+                await conn.execute("DELETE FROM audit_log WHERE tenant_id = $1", tenant_id)
+                await conn.execute("DELETE FROM sanctions_hits WHERE tenant_id = $1", tenant_id)
+                await conn.execute("DELETE FROM face_matches WHERE tenant_id = $1", tenant_id)
+                await conn.execute("DELETE FROM cases WHERE tenant_id = $1", tenant_id)
+                await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
+        except asyncpg.ForeignKeyViolationError:
+            if attempt == attempts:
+                raise
+            await asyncio.sleep(2.0)  # let the straggler activity finish, then try again
+            continue
+        finally:
+            await conn.close()
+        break
+
     conn = await asyncpg.connect(dsn=_ADMIN_DSN)
     try:
-        async with conn.transaction():
-            await conn.execute("DELETE FROM audit_log WHERE tenant_id = $1", tenant_id)
-            await conn.execute("DELETE FROM sanctions_hits WHERE tenant_id = $1", tenant_id)
-            await conn.execute("DELETE FROM face_matches WHERE tenant_id = $1", tenant_id)
-            await conn.execute("DELETE FROM cases WHERE tenant_id = $1", tenant_id)
-            await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
+        leftover = await conn.fetchval("SELECT count(*) FROM tenants WHERE id = $1", tenant_id)
     finally:
         await conn.close()
+    if leftover:
+        print(f"  WARNING: tenant {tenant_id} survived cleanup -- dev database now has debris")
 
 
 async def _case_status(case_id: str) -> str | None:
@@ -218,6 +242,15 @@ async def _reset_to_first_workflow_task(client: Client, workflow_id: str) -> Non
     )
 
 
+async def _terminate_workflow(client: Client, workflow_id: str) -> None:
+    """Stop this scenario's own workflow before deleting the rows it is still writing to."""
+    try:
+        if await _workflow_status(client, workflow_id) == WorkflowExecutionStatus.RUNNING:
+            await client.get_workflow_handle(workflow_id).terminate(reason="chaos run finished")
+    except Exception:  # noqa: BLE001 - best-effort teardown; cleanup retries cover the rest
+        pass
+
+
 async def _terminate_stale_chaos_workflows(client: Client) -> None:
     """Clear leftovers from an interrupted run.
 
@@ -248,6 +281,7 @@ async def scenario_qdrant() -> bool:
     """
     print("\n=== scenario: qdrant unavailable mid-workflow ===")
     tenant_id, case_id = await _create_tenant_and_case()
+    client = None
     try:
         client = await Client.connect(
             pipeline_settings.temporal_address, namespace=pipeline_settings.temporal_namespace
@@ -305,6 +339,8 @@ async def scenario_qdrant() -> bool:
     finally:
         print("  restarting qdrant...")
         _compose("start", "qdrant")
+        if client is not None:
+            await _terminate_workflow(client, f"chaos-qdrant-{case_id}")
         try:
             await pipeline_db.close_pool()
         except Exception:  # noqa: BLE001
@@ -341,6 +377,7 @@ async def scenario_postgres() -> bool:
     tenant_id, case_id = await _create_tenant_and_case()
     workflow_id = f"chaos-postgres-{case_id}"
     restarted = False
+    client = None
     try:
         client = await Client.connect(
             pipeline_settings.temporal_address, namespace=pipeline_settings.temporal_namespace
@@ -453,6 +490,8 @@ async def scenario_postgres() -> bool:
         if not restarted:
             _compose("start", "postgres")
             await _wait_for(_postgres_accepts_connections, 60.0, "postgres to accept connections")
+        if client is not None:
+            await _terminate_workflow(client, workflow_id)
         try:
             await pipeline_db.close_pool()
         except Exception:  # noqa: BLE001
