@@ -25,7 +25,9 @@ repos:
     hooks:
       - id: mypy
         name: mypy
-        entry: uv run mypy services tests
+        # Same three paths CI checks -- when these drifted apart (CI had scripts, this
+        # didn't), a type error in scripts/ could only ever be discovered after pushing.
+        entry: uv run mypy services tests scripts
         language: system
         pass_filenames: false
         types: [python]
