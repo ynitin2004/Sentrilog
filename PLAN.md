@@ -273,7 +273,7 @@ A phase is not "done" on happy-path-works. Before merging, verify at the level e
 | 10. Real-time (SSE) & production hardening | **Done** | `v0.10.0` | `325c3d8` | 2026-08-18 |
 | 11. Audit trail | **Done** | `v0.11.0` | `f4b005a` | 2026-08-20 |
 | 12. Hardening | **Done** | `v0.12.0` | `3d57de7` | 2026-10-29 |
-| 12.1. CI/CD green | **Done** | `v0.12.1` | `TBD` | 2026-10-30 |
+| 12.1. CI/CD green | **Done** | `v0.12.1` | `cdacece` | 2026-10-30 |
 | 13. AWS infra + deploy | Not started | — | — | — |
 
 ## 11. Changelog
