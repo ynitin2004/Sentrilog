@@ -12,7 +12,7 @@ from temporalio.exceptions import ApplicationError
 from .. import audit, db, ocr, storage
 from ..config import settings
 from ..extraction.extract import extract_id_document
-from ..extraction.vlm import GeminiVLMClient
+from ..extraction.vlm import GeminiVLMClient, VLMClient
 from ..face_match import FaceMatchClient, InsightFaceClient, NoFaceDetectedError
 from ..risk_scoring import RiskInputs, assess_risk
 
@@ -139,11 +139,32 @@ _WEBHOOK_MAX_ATTEMPTS = 3
 _WEBHOOK_RETRY_BACKOFF_SECONDS = 1.0
 
 
-_vlm_client = GeminiVLMClient(
-    api_key=settings.gemini_api_key.get_secret_value(), model=settings.gemini_model
-)
+_vlm_client: VLMClient | None = None
 _face_match_client: FaceMatchClient | None = None
 _embedding_client: "EmbeddingClient | None" = None
+
+
+def _get_vlm_client() -> VLMClient:
+    """Lazy for the same reason _get_face_match_client and the embedding client below are:
+    constructing it at module scope makes a Gemini credential a precondition for *importing*
+    this module, and only one of its nine activities ever calls Gemini.
+
+    That cost was real, not theoretical. `genai.Client(api_key="")` raises ValueError rather
+    than deferring the complaint to the first call, so on CI -- where GEMINI_API_KEY is empty
+    unless a repository secret is set -- four unrelated test modules failed at *collection*
+    with "No API key was provided": the webhook-delivery, risk-scoring/finalize, workflow
+    control-flow and review end-to-end suites, none of which touch extraction. The same shape
+    bit this file once before, when easyocr's import pulled in torch (Phase 12).
+
+    It is also wrong in production. A worker started with --tier to serve only webhooks and
+    risk scoring would refuse to boot without an extraction credential it will never use.
+    """
+    global _vlm_client
+    if _vlm_client is None:
+        _vlm_client = GeminiVLMClient(
+            api_key=settings.gemini_api_key.get_secret_value(), model=settings.gemini_model
+        )
+    return _vlm_client
 
 
 def _get_face_match_client() -> FaceMatchClient:
@@ -187,7 +208,7 @@ async def extract_document_activity(input: ExtractDocumentInput) -> ExtractDocum
 
         result = await asyncio.to_thread(
             extract_id_document,
-            _vlm_client,
+            _get_vlm_client(),
             image_bytes,
             "image/jpeg",
             mrz_lines=mrz_lines,

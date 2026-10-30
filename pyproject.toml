@@ -65,6 +65,12 @@ target-version = ["py312"]
 python_version = "3.12"
 strict = true
 ignore_missing_imports = true
+# scripts/ has no __init__.py, so without this mypy reaches the same file by two module names
+# ("verify_audit_chain" when crawling the directory, "scripts.verify_audit_chain" as a namespace
+# package from the repo root) and refuses to check anything at all. CI ran `mypy services tests
+# scripts` while pre-commit ran `mypy services tests`, so the error only ever appeared on CI.
+explicit_package_bases = true
+mypy_path = "."
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "services"]

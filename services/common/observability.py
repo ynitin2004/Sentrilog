@@ -15,6 +15,7 @@ setup code every service's entrypoint calls once with its own service name.
 """
 
 import logging
+import os
 import sys
 from collections.abc import MutableMapping
 from typing import Any
@@ -119,6 +120,19 @@ class _LateBoundStdout:
             pass
 
 
+def _console_export_disabled() -> bool:
+    """Honours OTEL_TRACES_EXPORTER=none, which is OpenTelemetry's own standard variable for
+    "produce spans but ship them nowhere" -- not a flag invented for this project.
+
+    The provider is still installed when it's set, so spans are still created and
+    _add_trace_context still stamps trace_id/span_id onto every log line; only the printing
+    stops. CI sets it: with the console exporter on, a full test run buries its own failure
+    output under a JSON span per HTTP request, which makes the one thing a CI log exists for --
+    reading the traceback -- the hardest thing to find in it.
+    """
+    return os.getenv("OTEL_TRACES_EXPORTER", "").strip().lower() == "none"
+
+
 _tracing_configured = False
 
 
@@ -133,11 +147,13 @@ def configure_tracing(service_name: str) -> None:
         return
 
     provider = TracerProvider(resource=Resource.create({"service.name": service_name}))
-    # `out` is annotated IO[Any], but ConsoleSpanExporter only ever calls .write() and .flush()
-    # on it -- the annotation is wider than the contract it actually uses. Satisfying IO[Any]
-    # properly would mean implementing a dozen methods (read, seek, fileno, the context-manager
-    # protocol) that this writer has no meaning for, so the narrow ignore is the honest option.
-    exporter = ConsoleSpanExporter(out=_LateBoundStdout())  # type: ignore[arg-type]
-    provider.add_span_processor(BatchSpanProcessor(exporter))
+    if not _console_export_disabled():
+        # `out` is annotated IO[Any], but ConsoleSpanExporter only ever calls .write() and
+        # .flush() on it -- the annotation is wider than the contract it actually uses.
+        # Satisfying IO[Any] properly would mean implementing a dozen methods (read, seek,
+        # fileno, the context-manager protocol) that this writer has no meaning for, so the
+        # narrow ignore is the honest option.
+        exporter = ConsoleSpanExporter(out=_LateBoundStdout())  # type: ignore[arg-type]
+        provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
     _tracing_configured = True
