@@ -9,6 +9,82 @@ on:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
+
+    # The suite is integration-first by design: it talks to a real Postgres with real row-level
+    # security, a real Qdrant collection, a real Temporal server running real workflows, and a
+    # real S3 API behind a presigned URL. Only ~40 of its tests are pure units. Standing these
+    # four up is therefore not optional extra fidelity -- without them the test step can only
+    # ever fail, which is how it stayed red while nobody read past the lint failure above it.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sentrilog
+          POSTGRES_PASSWORD: sentrilog
+          POSTGRES_DB: sentrilog
+        ports:
+          - 5432:5432
+        # The only service that needs a health gate here: the schema step below runs before
+        # scripts/wait_for_dependencies.py can check anything, because that script's Postgres
+        # check connects as sentrilog_app, a role the schema itself creates.
+        options: >-
+          --health-cmd "pg_isready -U sentrilog -d sentrilog"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+      qdrant:
+        image: qdrant/qdrant:v1.12.4
+        ports:
+          - 6333:6333
+
+      # Temporal's persistence is this same Postgres, as in docker-compose.yml -- it creates
+      # its own `temporal`/`temporal_visibility` databases there. auto-setup waits for the
+      # database itself, so there's no ordering problem with the service above.
+      temporal:
+        image: temporalio/auto-setup:1.24.2
+        env:
+          DB: postgres12
+          DB_PORT: 5432
+          POSTGRES_USER: sentrilog
+          POSTGRES_PWD: sentrilog
+          POSTGRES_SEEDS: postgres
+        ports:
+          - 7233:7233
+
+      # Stands in for S3. Was minio/minio until Phase 12.1, when MinIO's images stopped being
+      # pullable from every registry that carried them -- see docker-compose.yml for the detail.
+      # Port 9000 is MinIO's old one, kept so .env files didn't have to change; 9090 is s3mock's.
+      s3:
+        image: adobe/s3mock:4.9.0
+        env:
+          initialBuckets: sentrilog-documents
+        ports:
+          - 9000:9090
+
+    env:
+      # Dev-only credentials, matching docker-compose.yml and .env.example. The app role, not
+      # the superuser -- running the suite as superuser would bypass the row-level security
+      # policies that several tests exist specifically to prove.
+      DATABASE_URL: postgresql://sentrilog_app:sentrilog_app_dev_password@localhost:5432/sentrilog
+      S3_ENDPOINT_URL: http://localhost:9000
+      S3_ACCESS_KEY: sentrilog
+      S3_SECRET_KEY: sentrilog123
+      S3_BUCKET: sentrilog-documents
+      S3_REGION: us-east-1
+      TEMPORAL_ADDRESS: localhost:7233
+      TEMPORAL_NAMESPACE: default
+      QDRANT_URL: http://localhost:6333
+      # Empty when the repository secret isn't set, which is a valid SecretStr and lets every
+      # other test run. The one test that bills a real Gemini call skips itself on an empty key
+      # (tests/screening/test_screen.py) -- add the secret and it starts running here.
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      # OpenTelemetry's own standard value for "make spans, export them nowhere". The console
+      # exporter writes a JSON span per HTTP request, which across ~190 tests buries the
+      # traceback a CI log exists to show. Spans are still created, so logs still carry
+      # trace_id/span_id.
+      OTEL_TRACES_EXPORTER: none
+
     steps:
       - uses: actions/checkout@v4
 
@@ -23,6 +99,15 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-groups
 
+      # tests/pipeline/test_face_match.py runs against the real InsightFace model rather than a
+      # fake, so the buffalo_l pack (~280MB) is downloaded on first use. Caching it keeps that
+      # out of every run and off the critical path of an upstream release host being reachable.
+      - name: Cache InsightFace models
+        uses: actions/cache@v4
+        with:
+          path: ~/.insightface
+          key: insightface-buffalo_l-${{ runner.os }}
+
       - name: Ruff lint
         run: uv run ruff check .
 
@@ -31,6 +116,22 @@ jobs:
 
       - name: Mypy type check
         run: uv run mypy services tests scripts
+
+      # Compose mounts these into the Postgres container's docker-entrypoint-initdb.d; a
+      # service container can't mount from the checkout (it starts before the checkout exists),
+      # so they're applied from here instead. Same files, same order, so there is one schema
+      # definition rather than a second one that drifts.
+      - name: Apply database schema
+        env:
+          PGPASSWORD: sentrilog
+        run: |
+          for f in infra/docker/postgres-init/*.sql; do
+            echo "--- applying $f"
+            psql -v ON_ERROR_STOP=1 -h localhost -U sentrilog -d sentrilog -f "$f"
+          done
+
+      - name: Wait for dependencies
+        run: uv run python scripts/wait_for_dependencies.py
 
       - name: Run tests
         run: uv run pytest -v
