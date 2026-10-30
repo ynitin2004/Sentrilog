@@ -135,9 +135,20 @@ def test_no_match_returns_empty_list(test_collection: str) -> None:
     assert screen_name(client, "No Relation At All", collection_name=test_collection) == []
 
 
+@pytest.mark.skipif(
+    not settings.gemini_api_key.get_secret_value(),
+    reason="no GEMINI_API_KEY configured -- this is the suite's only test that bills a real API",
+)
 def test_real_gemini_and_qdrant_end_to_end(test_collection: str) -> None:
     """The one real test: actual Gemini embeddings against actual Qdrant, proving the real
-    integration works, not just the orchestration logic against fakes."""
+    integration works, not just the orchestration logic against fakes.
+
+    Skipped rather than faked when no key is present, because a fake here would test nothing
+    this file's other tests don't already cover -- the whole point is the real call. CI sets
+    GEMINI_API_KEY from a repository secret, so adding that secret is what turns this test on
+    there; without it CI is honest about having proven the orchestration but not the
+    integration, instead of quietly passing a stubbed version.
+    """
     from services.screening.embeddings import GeminiEmbeddingClient
 
     client = GeminiEmbeddingClient(
