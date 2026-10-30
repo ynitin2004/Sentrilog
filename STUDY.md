@@ -316,6 +316,44 @@ This file grows every phase — treat it as a second changelog, one for concepts
 
 ---
 
+## Phase 12.1 concepts
+
+### A CI service container is a sibling, not a sidecar
+
+**What:** GitHub Actions `services:` entries are ordinary containers on a shared user-defined network, started *before* your repository is checked out and addressable by their label as a hostname. Two consequences follow from that ordering and they catch almost everyone. A service cannot mount anything from your checkout, because the checkout does not exist yet — so anything a `docker-compose.yml` supplies by volume (database init scripts, config files, seed data) has to be applied from a job *step* instead. And because they are siblings rather than children, one service reaches another by label: Temporal's `POSTGRES_SEEDS: postgres` resolves because `postgres` is the label of the service beside it, not because of any ordering declaration.
+
+**Why here:** `docker-compose.yml` hands Postgres its schema by mounting `infra/docker/postgres-init/` into `docker-entrypoint-initdb.d`. CI cannot do that, so `.github/workflows/ci.yml` applies the same six files with `psql` in a step. The important part is *the same files, in the same order* — the tempting shortcut is to paste a "CI schema" into the workflow, which creates a second definition of your database that is then free to drift from the real one without anything failing.
+
+**Read more:** <https://docs.github.com/en/actions/using-containerized-services/about-service-containers>
+
+### Actions only waits for services that tell it how to wait
+
+**What:** A service container declaring `--health-cmd` is gated: Actions will not start your steps until Docker reports it healthy. A service without one is started and immediately forgotten, so your first step can run against a process that is still booting. The failure this produces is the nasty kind — a connection error inside a test, which reads like a bug in the code rather than a race in the harness.
+
+**Why here:** Postgres gets a `--health-cmd` because the schema step runs before anything else can check it. Temporal cannot have a usable one: its own healthcheck needs `tctl` aimed at the container's own hostname, and a `$(hostname)` inside a service `options` string is expanded by the runner's shell, not inside the container. So readiness moved into `scripts/wait_for_dependencies.py`, which matters for a second reason — a TCP probe is the wrong test for two of these four dependencies. Temporal binds `:7233` well before it will answer an RPC, and measured in a local replica of the CI topology it takes about **50 seconds** to go from "port open" to "answering". Each check in that script therefore performs the real operation the application performs, and the Postgres one deliberately connects as `sentrilog_app` so that it also proves the schema ran, since that role does not exist until it does.
+
+**Read more:** <https://docs.docker.com/reference/dockerfile/#healthcheck>
+
+### A local gate that differs from the remote gate is not a gate
+
+**What:** Pre-commit hooks, editor integrations and CI all exist to run the same checks at different moments. The moment they diverge, the earlier one stops being a preview of the later one and becomes a separate, weaker check that gives false confidence — and the divergence is invisible, because both of them pass.
+
+**Why here:** `.pre-commit-config.yaml` ran `mypy services tests` while `.github/workflows/ci.yml` ran `mypy services tests scripts`. One extra path. It meant the only way to discover anything about `scripts/` was to push, and what it discovered was not even a type error: mypy refused to run at all, because `scripts/` has no `__init__.py` and so one file was reachable under two module names. That took CI's **entire** test step down with it — a run can't fail a test it never collected — and it had been red for nineteen consecutive runs.
+
+The general shape is worth remembering beyond mypy: when a build fails at step N, the steps after N report nothing, and "nothing" is easily misread as "fine". Reading what a red build actually says, rather than that it is red, is the whole skill.
+
+**Read more:** <https://mypy.readthedocs.io/en/stable/running_mypy.html#mapping-file-paths-to-modules>
+
+### Your vendor's distribution terms are a dependency
+
+**What:** A pinned image tag is not a guarantee that you can still pull it. Registries withdraw images, vendors move catalogues behind paid tiers, and a project can relicense the artefact while keeping the name — so a build that worked for a year stops working with no change on your side.
+
+**Why here:** MinIO had been this project's local S3 since Phase 2 and its images are simply gone — not slow, not rate-limited, but *unauthorized* at the registry for anonymous pulls, across Docker Hub, quay.io and Bitnami. LocalStack, the obvious replacement, turned out to have done something subtler: its current date-versioned tags are a licensed image that **starts up and then exits** demanding an auth token, while the last Community build is a frozen line. The lesson is not "avoid vendors" but that the check belongs in your diagnosis: before assuming a local Docker or network fault, ask the registry directly whether an anonymous pull token is even being issued. That one request is what separated "my machine is broken" from "this image no longer exists for me", and it pointed at a different fix.
+
+**Read more:** <https://distribution.github.io/distribution/spec/auth/token/>
+
+---
+
 ## Coming up later (named now so you know to watch for them)
 
 - **Terraform modules & remote state** (Phase 13) — infrastructure as version-controlled code.
