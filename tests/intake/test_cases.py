@@ -5,6 +5,9 @@ import httpx
 import pytest
 from httpx import AsyncClient
 
+from services.intake.config import settings
+from services.intake.storage import get_s3_client
+
 _ADMIN_DSN = "postgresql://sentrilog:sentrilog@localhost:5432/sentrilog"
 
 VALID_PAYLOAD = {
@@ -17,6 +20,14 @@ VALID_PAYLOAD = {
 
 def _auth(api_key: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {api_key}"}
+
+
+def _object_size(key: str) -> int:
+    return int(get_s3_client().head_object(Bucket=settings.s3_bucket, Key=key)["ContentLength"])
+
+
+def _delete_object(key: str) -> None:
+    get_s3_client().delete_object(Bucket=settings.s3_bucket, Key=key)
 
 
 async def test_create_case_returns_tenant_scoped_upload_targets(
@@ -86,13 +97,27 @@ async def test_upload_flow_end_to_end_via_presigned_url(
         json=VALID_PAYLOAD,
         headers={**_auth(tenant_a["api_key"]), "Idempotency-Key": secrets.token_hex(8)},
     )
-    upload_url = resp.json()["id_document"]["upload_url"]
+    body = resp.json()
+    upload_url = body["id_document"]["upload_url"]
 
-    async with httpx.AsyncClient() as raw:
-        put_resp = await raw.put(
-            upload_url, content=b"fake-jpeg-bytes", headers={"Content-Type": "image/jpeg"}
-        )
-    assert put_resp.status_code == 200
+    try:
+        async with httpx.AsyncClient() as raw:
+            put_resp = await raw.put(
+                upload_url, content=b"fake-jpeg-bytes", headers={"Content-Type": "image/jpeg"}
+            )
+        assert put_resp.status_code == 200
+
+        # Prove the bytes actually landed under the key the API handed out, rather than
+        # trusting a 200 from a presigned PUT -- the signature covers the key, so a 200 against
+        # the wrong one would still look like success here.
+        assert _object_size(body["id_document"]["s3_key"]) == len(b"fake-jpeg-bytes")
+    finally:
+        # The only test in the suite that writes to object storage, and the only one with
+        # anything to clean up there. Deleted via boto3 directly rather than through
+        # services/intake/storage.py, which deliberately exposes no delete: an app that can
+        # create documents but never remove them is part of the audit-integrity design, the
+        # same reason conftest reaches for the superuser DSN to delete database rows.
+        _delete_object(body["id_document"]["s3_key"])
 
 
 async def test_cross_tenant_get_returns_404_not_403(
