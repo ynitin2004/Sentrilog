@@ -19,7 +19,7 @@ Client → Intake API (FastAPI)
            └─→ start Temporal workflow (case_id)
 
 Temporal Workflow "kyc_case"
-  1. OCR (PaddleOCR/Textract) + VLM extract → structured JSON
+  1. OCR + MRZ checksum, Gemini VLM fallback → structured JSON
   2. validate against Pydantic schema
        fail → retry (bounded) → still fail → route to review_queue (reason: extraction_failure)
   3. parallel:
@@ -35,7 +35,7 @@ Temporal Workflow "kyc_case"
 | Layer | Tech |
 |---|---|
 | Intake | FastAPI · encrypted S3 · presigned uploads |
-| Extract | PaddleOCR / Textract · VLM (structured output) · face embeddings |
+| Extract | EasyOCR + MRZ checksums · Gemini VLM (structured output) · InsightFace embeddings |
 | Screen | Vector DB (Qdrant) · phonetic match · OFAC / UN feeds |
 | Orchestrate | Temporal · review queue · retry + escalate |
 | Record | Postgres (append-only) · audit log · model versioning |
@@ -50,8 +50,10 @@ services/
 frontend/      # React + TypeScript operator console (reviewer queue + tenant/admin) -- Phase 8+
 webui/         # Phase 7's minimal single-file reviewer console, superseded by frontend/
 infra/
-  terraform/   # AWS infrastructure (Phase 13)
-docs/          # Design notes, runbooks
+  terraform/   # AWS infrastructure (planned, Phase 13)
+docs/          # Owner docs (start at docs/MEMORY.md), runbooks, evidence
+CLAUDE.md      # Session protocol and documentation index
+improvements.md # Roadmap to a production product
 PLAN.md        # Full project plan: architecture, data model, 13-phase delivery plan, status
 STUDY.md       # Concepts introduced each phase, explained, with links to further reading
 ```
