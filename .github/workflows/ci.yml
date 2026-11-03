@@ -135,3 +135,84 @@ jobs:
 
       - name: Run tests
         run: uv run pytest -v
+
+  # The evaluation harness (services/eval, roadmap Phase 13). A separate job so a slow model
+  # download never delays the test signal above, and so its report has its own summary page.
+  # It needs Postgres (eval_runs, list_snapshots) and Qdrant (the 16,000-name OFAC index), not
+  # Temporal or S3. Most of its numbers are reported, not gated; the gates that block are listed
+  # in services/eval/report.py.
+  eval:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sentrilog
+          POSTGRES_PASSWORD: sentrilog
+          POSTGRES_DB: sentrilog
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sentrilog -d sentrilog"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+      qdrant:
+        image: qdrant/qdrant:v1.12.4
+        ports:
+          - 6333:6333
+
+    env:
+      DATABASE_URL: postgresql://sentrilog_app:sentrilog_app_dev_password@localhost:5432/sentrilog
+      QDRANT_URL: http://localhost:6333
+      # Screening settings import requires the key field; the harness never calls Gemini unless
+      # asked to (--vlm), so an empty value is correct here.
+      GEMINI_API_KEY: ""
+      MODEL_CACHE_DIR: /home/runner/.cache/fastembed
+      EVAL_CACHE_DIR: /home/runner/.cache/sentrilog-eval
+      OTEL_TRACES_EXPORTER: none
+      # pipeline settings are imported by the extraction suite; these are its dev values.
+      S3_ENDPOINT_URL: http://localhost:9000
+      S3_ACCESS_KEY: sentrilog
+      S3_SECRET_KEY: sentrilog123
+      S3_BUCKET: sentrilog-documents
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-groups
+
+      # LFW (173 MB, pinned by hash), the fastembed ONNX models and InsightFace's buffalo_l are
+      # all downloaded on first use. Keyed on the manifests, so a dataset change re-fetches.
+      - name: Cache evaluation data and models
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/sentrilog-eval
+            ~/.cache/fastembed
+            ~/.insightface
+            ~/.EasyOCR
+          key: eval-${{ runner.os }}-${{ hashFiles('services/eval/data/**/MANIFEST.json') }}
+
+      - name: Apply database schema
+        env:
+          PGPASSWORD: sentrilog
+        run: |
+          for f in infra/docker/postgres-init/*.sql; do
+            psql -v ON_ERROR_STOP=1 -h localhost -U sentrilog -d sentrilog -f "$f"
+          done
+
+      - name: Run the evaluation harness
+        run: uv run python -m services.eval all --record --report "$GITHUB_STEP_SUMMARY"
+
