@@ -7,7 +7,7 @@ its reason. Everything else lands in the job summary for a human to read.
 
 from typing import Any
 
-# Blocking. Each floor is set from a measured run (PLAN.md, Phase 13a changelog), with room
+# Blocking. Each floor is set from a measured run (docs/PHASE-LOG.md, Phase 13a), with room
 # for run-to-run noise only where a suite has any.
 GATES = {
     # Missing a listed person is the failure the product exists to prevent (STUDY.md, Phase 13).

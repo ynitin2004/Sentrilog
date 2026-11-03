@@ -7,7 +7,9 @@ This is built as a production system from the start — a multi-stage async pipe
 ## Why this is hard
 
 - **VLM extraction with structured output** — forcing a JSON schema out of a document image, with validation and bounded retry.
-- **Fuzzy sanctions screening** — e.g. "Mohammed" vs "Muhammad": phonetic + vector similarity against OFAC/UN lists, tuned for recall.
+- **Fuzzy sanctions screening** against the real OFAC SDN list (individuals, versioned snapshots): character n-gram vectors at a threshold chosen by the evaluation harness — 95.67% recall at 13.45% false positives on its test set.
+- **An evaluation harness** (`services/eval/`) that measures screening recall and false-positive rate, face match TAR@FAR, MRZ extraction F1 and auto-clear precision on pinned, hashed datasets, in CI.
+- **Per-tenant risk policies**, versioned and pinned to each case, that can send a case to a human but never reject one.
 - **Human-in-the-loop** — low-confidence cases pause the pipeline and resume on a reviewer's decision, potentially days later.
 - **Immutable audit trail** — every decision, model version, and input hash is stored, hash-chained, and provably tamper-evident for regulators.
 
@@ -24,8 +26,8 @@ Temporal Workflow "kyc_case"
        fail → retry (bounded) → still fail → route to review_queue (reason: extraction_failure)
   3. parallel:
        a. face_match(selfie, id_photo) → similarity score
-       b. sanctions_screen(name, dob, nationality) → vector + phonetic hits
-  4. risk_score = f(confidence, face_score, sanctions_hits)
+       b. sanctions_screen(name) → n-gram vector hits against the active OFAC snapshot
+  4. risk_score = the tenant's pinned policy over (confidence, face_score, sanctions_hits)
   5. decision:
        clear        → APPROVED
        low_conf/hit → review_queue → wait_for_signal(reviewer_decision) → APPROVED/REJECTED
@@ -50,11 +52,11 @@ services/
 frontend/      # React + TypeScript operator console (reviewer queue + tenant/admin) -- Phase 8+
 webui/         # Phase 7's minimal single-file reviewer console, superseded by frontend/
 infra/
-  terraform/   # AWS infrastructure (planned, Phase 13)
+  terraform/   # AWS infrastructure (planned, roadmap Phase 14)
 docs/          # Owner docs (start at docs/MEMORY.md), runbooks, evidence
 CLAUDE.md      # Session protocol and documentation index
 improvements.md # Roadmap to a production product
-PLAN.md        # Full project plan: architecture, data model, 13-phase delivery plan, status
+PLAN.md        # Original plan and the record of Phases 1–12.1; later phases in docs/PHASE-LOG.md
 STUDY.md       # Concepts introduced each phase, explained, with links to further reading
 ```
 

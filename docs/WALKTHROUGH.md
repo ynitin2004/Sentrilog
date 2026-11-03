@@ -2,7 +2,7 @@
 
 For a developer or interviewer with the repository, Docker Desktop and `uv`. Commands use the
 `uv run python -m` form this Windows machine needs; on Linux, plain `uv run <tool>` also works.
-Expected results are the recorded ones at `v0.12.1`. They were not re-run when this document was written.
+Expected results are the ones recorded at `v0.13.2` (2026-11-03), each re-run for that release.
 
 ## 1. Local stack
 
@@ -11,7 +11,9 @@ cp .env.example .env            # add a Gemini key from https://aistudio.google.
 docker compose up -d --wait     # postgres, qdrant, s3, temporal, temporal-ui, frontend
 uv sync --all-groups
 uv run python scripts/wait_for_dependencies.py
-uv run python -m services.screening.ingest     # needs a Gemini key; one embedding per entry
+uv run python -m services.screening.ingest --source ofac --from-dir services/eval/data/ofac-sdn-20261103
+#   -> "built sanctions-ofac-sdn-20261103-e568aca69f-char-ngram-2-3-1024: 16162 entries", ~30 s, no API key
+#   --source ofac alone downloads today's list; --list shows snapshots; --activate COLLECTION rolls back
 ```
 
 Temporal takes about 50 s to answer RPCs, which is why the readiness script performs real operations
@@ -24,8 +26,8 @@ uv run python -m uvicorn services.intake.main:app --port 8000
 uv run python -m services.pipeline.workflows.worker
 ```
 
-On this machine, Application Control blocks torch, so a real OCR call fails on the host. The test suite
-is arranged so that this does not affect collection.
+torch loads on this machine as of 2026-11-03, so real OCR runs on the host, at about 8 s a page.
+The import is lazy, so if torch is ever blocked again only OCR stops; collection is unaffected.
 
 ## 2. Static gates (what CI runs)
 
@@ -47,8 +49,8 @@ GEMINI_API_KEY="" OTEL_TRACES_EXPORTER=none uv run python -m pytest -q
 
 | Run | Expected |
 |---|---|
-| With a key | 192 passed |
-| Empty key (CI's configuration) | 191 passed, 1 skipped (`test_real_gemini_and_qdrant_end_to_end`) |
+| With a key | 243 passed |
+| Empty key (CI's configuration) | 242 passed, 1 skipped (`test_real_gemini_and_qdrant_end_to_end`) |
 
 Only about 40 tests are pure units; the rest use real Postgres, Temporal, Qdrant and an S3 API. To prove
 the suite's premise, use `sentrilog_app` in `DATABASE_URL`: the superuser would bypass RLS.
@@ -87,17 +89,30 @@ uv run python scripts/verify_audit_chain.py            # all tenants
 uv run python scripts/verify_audit_chain.py <tenant-id>
 ```
 
-Expected: every chain intact. Editing a historical row as the superuser in a scratch environment must
-make this report the break. The script hardcodes the local superuser DSN today.
+Expected: every chain intact ("OK: all audit chains intact"; 24 tenants in the dev database on
+2026-11-03). Editing a historical row as the superuser in a scratch environment must make this report
+the break. Before Phase 13 it also reported every *finalised* case as broken, a verifier bug (D36). The
+script hardcodes the local superuser DSN today.
 
 ## 7. Frontend
 
 ```bash
 cd frontend
 npm ci
-npm run typecheck && npm run lint && npm test && npm run build
+npm run typecheck && npm run lint && npm test && npm run build     # 38 unit tests
 npm run storybook        # http://localhost:6006
 ```
+
+The end-to-end flow needs the API and a worker running (§1), then:
+
+```bash
+uv run python scripts/seed_e2e.py frontend/e2e/.fixture.json      # the real workflow parks a case
+cd frontend && npx playwright install chromium && npx playwright test   # 1 passed
+cd .. && uv run python scripts/seed_e2e.py --cleanup frontend/e2e/.fixture.json
+```
+
+On a Windows checkout `npm run format:check` fails on line endings alone (`core.autocrlf`); CI's Linux
+checkout does not.
 
 After a backend contract change, regenerate the types:
 
@@ -108,10 +123,35 @@ cd frontend && npm run generate-types
 
 ## 8. CI
 
-Workflow: `.github/workflows/ci.yml`, job `lint-and-test`. Latest recorded result on a real runner:
-191 passed, 1 skipped. The `ci-watch` skill follows a run. GitHub emails on failure by default, not on
+Workflow: `.github/workflows/ci.yml`, four jobs: `lint-and-test` (the suite, 242 + 1 skipped expected),
+`eval` (the harness and its gates), `frontend`, and `e2e`. The last three were added in Phase 13 and had
+not yet run on GitHub when it closed. Latest recorded `lint-and-test` result on a real runner: 191
+passed, 1 skipped (`v0.12.1`). The `ci-watch` skill follows a run. GitHub emails on failure by default, not on
 success, so check the Actions tab.
 
-## 9. Deployment
+## 9. Evaluation harness
+
+```bash
+uv run python -m services.eval screening --compare        # all four embeddings, with and without reranker: ~20 min
+uv run python -m services.eval screening                  # the shipped configuration only: ~2 min
+uv run python -m services.eval face                       # LFW DevTest; first run downloads 173 MB and embeds ~40 min here
+uv run python -m services.eval extraction                 # 300 MRZ parses + 100 OCR pages: ~13 min here
+uv run python -m services.eval risk [--policy FILE]       # instant; reads the results of face and screening
+```
+
+Add `--write-results` to update `services/eval/results/*.json`, `--record` for an `eval_runs` row, and
+`--report PATH` for Markdown. Recorded 2026-11-03:
+
+| Suite | Expected |
+|---|---|
+| Screening (shipped) | n-gram, threshold 0.73, phonetic off: 95.67 % recall, 13.45 % FPR |
+| Face | TAR 95.0 % at FAR 1e-3, 95.4 % at 1e-2; 0 no-face images |
+| Extraction | parse F1 0.981 (27 wrong but accepted); OCR F1 0.950 on 24 of 100 accepted (6 wrong) |
+| Risk, built-in | precision 99.95 %, review burden 84.05 %, leaks 0 % impostor / 0.85 % listed |
+| Risk, `services/eval/policies/example-balanced.json` | precision 99.95 %, review burden 23.16 %, leaks 0 % / 4.09 % |
+
+Exit code 1 means a gate in `services/eval/report.py` failed.
+
+## 10. Deployment
 
 See [DEPLOY.md](DEPLOY.md). Nothing there is built yet.

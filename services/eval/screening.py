@@ -390,7 +390,7 @@ def select_shipped(results: Sequence[dict[str, Any]]) -> dict[str, Any]:
        costs a second model and roughly double the latency per screen.
 
     Fixed before the Phase 13a comparison was read, apart from rule 2, which was added when
-    the first comparison showed a lift of about one standard error (PLAN.md, Phase 13a).
+    the first comparison showed a lift of about one standard error (docs/PHASE-LOG.md, Phase 13a).
     """
     met = [r for r in results if r["target_met"]]
     if not met:

@@ -15,10 +15,11 @@ Start with [MEMORY.md](MEMORY.md). The session protocol and the full index are i
 | How to deploy it for $0 | [DEPLOY.md](DEPLOY.md) |
 | The operator console's UX rules | [DESIGN.md](DESIGN.md) |
 | What to do when something fails | [runbooks/](runbooks/README.md) |
+| What each roadmap phase did, measured and missed | [PHASE-LOG.md](PHASE-LOG.md) |
 | Evidence from real runs | [evidence/](evidence/README.md), [CASE-TRACES.md](CASE-TRACES.md) |
 
 Outside this folder:
 
-- [../PLAN.md](../PLAN.md): the phase-by-phase history, with test evidence and known gaps.
+- [../PLAN.md](../PLAN.md): the original plan and the history of Phases 1–12.1, kept as written.
 - [../STUDY.md](../STUDY.md): the concepts behind each phase.
 - [../improvements.md](../improvements.md): the roadmap to a production product.
