@@ -1,0 +1,4 @@
+# Evaluation datasets are hashed byte for byte (services/eval/datasets.py). core.autocrlf would
+# rewrite their line endings on a Windows checkout and every hash would stop matching.
+services/eval/data/** -text
+services/eval/results/** -text

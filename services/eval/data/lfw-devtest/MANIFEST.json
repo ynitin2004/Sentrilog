@@ -1,0 +1,16 @@
+{
+  "name": "lfw-devtest",
+  "description": "Labeled Faces in the Wild, original (non-aligned) images and the View 1 DevTest pairs: 500 same-person and 500 different-person pairs. Fetched by script into EVAL_CACHE_DIR and pinned by hash; never committed (D28). Research dataset of press photographs.",
+  "homepage": "http://vis-www.cs.umass.edu/lfw/",
+  "fetched_at": "2026-11-03",
+  "files": {
+    "pairsDevTest.txt": {
+      "url": "https://ndownloader.figshare.com/files/5976009",
+      "sha256": "7cb06600ea8b2814ac26e946201cdb304296262aad67d046a16a7ec85d0ff87c"
+    },
+    "lfw.tgz": {
+      "url": "https://ndownloader.figshare.com/files/5976018",
+      "sha256": "055f7d9c632d7370e6fb4afc7468d40f970c34a80d4c6f50ffec63f5a8d536c0"
+    }
+  }
+}

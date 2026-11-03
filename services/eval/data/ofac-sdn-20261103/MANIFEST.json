@@ -1,0 +1,17 @@
+{
+  "name": "ofac-sdn-20261103",
+  "description": "OFAC Specially Designated Nationals list, SDN.CSV and ALT.CSV exports, gzipped. US-government public domain (D27).",
+  "source_urls": [
+    "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.CSV",
+    "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/ALT.CSV"
+  ],
+  "fetched_at": "2026-11-03",
+  "uncompressed_sha256": {
+    "SDN.CSV": "5f240bed79d504e7a54788b4cd1c7f84e6afa56cd4778653b70b0771b6a8509d",
+    "ALT.CSV": "b0e2811fbb49ba6e9941a497e6b05fa2c9037b45ae7923196a01e2363a402259"
+  },
+  "files": {
+    "SDN.CSV.gz": "b749240d59873a879de96a5cf999d04a4bd606ade1ce9fa390cfb2bcb08790a8",
+    "ALT.CSV.gz": "c1bdc5cc16e7dad343aad87a1538b1594afd97d45bc34bb662d9f731a2f24122"
+  }
+}
