@@ -148,6 +148,29 @@ async def test_record_extends_the_chain_with_the_correct_prev_row_hash() -> None
         await _delete_tenant(tenant_id)
 
 
+async def test_verify_accepts_payloads_whose_jsonb_key_order_differs_from_sorted_order() -> None:
+    """Postgres renders JSONB with shorter keys first; the writer hashes keys sorted
+    alphabetically. These are the real payloads of finalize and webhook-delivery rows, whose
+    two orders disagree -- the verifier reported every finalized case as tampered until it
+    re-canonicalised the payload it reads back (Phase 13)."""
+    tenant_id, case_id = await _create_tenant_and_case()
+    try:
+        await audit.record(
+            tenant_id, case_id, "finalize_case.completed", actor="test",
+            payload={"status": "approved", "decision": "approved"},
+        )  # fmt: skip
+        await audit.record(
+            tenant_id, case_id, "deliver_webhooks.completed", actor="test",
+            payload={"delivered_count": 0, "failed_count": 0, "webhook_count": 0},
+        )  # fmt: skip
+        rows = await _fetch_chain(tenant_id)
+        # The premise: what Postgres hands back is not what was hashed.
+        assert rows[0]["payload"] != '{"decision": "approved", "status": "approved"}'
+        assert verify_chain(rows) == []
+    finally:
+        await _delete_tenant(tenant_id)
+
+
 async def test_concurrent_writes_for_the_same_tenant_never_fork_the_chain() -> None:
     # The real race this guards against: N activities for the same tenant (different cases can
     # process concurrently) all calling record() at once. Without the advisory lock in

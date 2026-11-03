@@ -133,7 +133,7 @@ URLs as implemented, but no one has tested it with this code. If it fails, use C
    secrets file.
 8. **Object store.** Set up the Garage layout, bucket and key. Set `S3_REGION` to Garage's configured
    region, because SigV4 signs the region.
-9. **Seed.** Run the `ingest` one-shot (one Gemini embedding per entry), then
+9. **Seed.** Run the `ingest` one-shot (`--source ofac`: downloads the list, ~30 s, no API key), then
    `scripts/seed_dev_tenant.py` and `scripts/seed_dev_reviewer.py`. Each prints its credential once.
 10. **Verify.** `/health`, `/ready`, `scripts/wait_for_dependencies.py`, then `scripts/live_smoke.py`.
     Done means a trace in `docs/evidence/case-traces/` with a verified chain.

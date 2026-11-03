@@ -16,7 +16,8 @@ Before ending a working session, update `docs/MEMORY.md`. It is the last action,
 
 | File | Owns | Update when |
 |---|---|---|
-| `PLAN.md` | The 13-phase delivery plan, status table and per-phase changelog with test evidence | Each phase closes (append; history is not rewritten) |
+| `PLAN.md` | The original 13-phase plan and the record of Phases 1–12.1 | Never: the user keeps it as written for project discussions |
+| `docs/PHASE-LOG.md` | Status table and per-phase changelog, with test evidence, for roadmap phases from 13 on | Each phase closes (append; history is not rewritten) |
 | `STUDY.md` | Concepts each phase introduced, explained | Each phase closes |
 | `improvements.md` | Roadmap to a production product: HLD, problems P-1…P-18, Phases 13–19, roadmap decisions | The roadmap changes |
 | `README.md` | What the project is and how to start | The first-run steps change |
@@ -56,9 +57,13 @@ After the quiz, record the change in `docs/DECISIONS.md` if it sets a precedent 
 ## This machine
 
 - An endpoint Application Control policy blocks `.venv/Scripts/*.exe`. Run tools as
-  `uv run python -m pytest`, `-m mypy`, `-m ruff`, `-m black`. CI on Linux keeps `uv run <tool>`;
-  do not "fix" the workflow to match.
-- The same policy blocks `torch_python.dll`, so real OCR cannot run on this host outside a container.
+  `uv run python -m pytest`, `-m mypy`, `-m ruff`, `-m black`, `-m uvicorn`. CI on Linux keeps
+  `uv run <tool>`; do not "fix" the workflow to match.
+- torch loads on this host as of 2026-11-03 (`2.13.0+cpu`; it was blocked before), so real
+  EasyOCR runs here, at about 8 s a page on this CPU. If `import torch` fails again, OCR is the
+  only thing that stops working: the import is lazy (`services/pipeline/ocr.py`).
+- The host is memory-starved (about 0.4 GB free). Docker Desktop stopped once under that pressure
+  on 2026-11-03; if Qdrant or Postgres refuses connections, check `docker ps` before the code.
 - Git identity comes from one-off environment variables on each command, never `git config`:
   `GIT_AUTHOR_NAME=ynitin GIT_AUTHOR_EMAIL=ynitin2004@gmail.com GIT_COMMITTER_NAME=ynitin GIT_COMMITTER_EMAIL=ynitin2004@gmail.com`.
 - Before pushing, run the suite twice: normally, and with `GEMINI_API_KEY=""`, which is CI's real

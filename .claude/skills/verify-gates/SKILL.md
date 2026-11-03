@@ -15,7 +15,8 @@ Use the `python -m` form. Application Control blocks the `.venv` executables on 
    - `uv run pre-commit run --all-files`
 3. Suite with the local key: `uv run python -m pytest -q`.
 4. Suite as CI runs it: `GEMINI_API_KEY="" OTEL_TRACES_EXPORTER=none uv run python -m pytest -q`.
-5. If `frontend/` changed, from `frontend/`: `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`. CI does not run these, so this is the only check.
+5. If `frontend/` changed, from `frontend/`: `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`, the same as CI's `frontend` job. If the review path changed, run the Playwright flow as `docs/WALKTHROUGH.md` §7 describes, which needs the API and a worker running.
+6. If screening, extraction, face match or risk scoring changed, run the affected `python -m services.eval` suite (WALKTHROUGH §9). A change to a screening threshold or model also needs `--write-results` and `tests/eval/test_shipped_config.py` passing.
 
 Compare with the latest counts in `docs/WALKTHROUGH.md` §3. Any drop needs an explanation, and new tests should raise the count.
 

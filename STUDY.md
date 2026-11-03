@@ -456,8 +456,56 @@ and keeps customer names on the box. Gemini remains available behind the `Embedd
 
 **Read more:** <https://ai.google.dev/gemini-api/docs/rate-limits>
 
+### A name is not a sentence
+
+**What:** Sentence-embedding models are trained to place texts with the same *meaning* close together. A person's name has almost no meaning to capture, so such a model clusters names by what they seem to be (Arabic-sounding, Slavic-sounding) rather than by spelling. Character n-grams — every two- and three-letter fragment of each token — track spelling directly, and spelling is what a transliteration, a typo or a reordered name mostly preserves.
+
+**Why here:** The harness compared four approaches on the real OFAC list. At 95% recall, character n-grams with no model at all had a 13.45% false-positive rate. The best sentence model, `bge-small-en`, had 23%. The multilingual paraphrase model first chosen for D26 never reached 95% recall: it rated "Priya Sharma" 0.79 against an unrelated listed name. The fanciest option measured worst, and only a measurement could have shown it.
+
+**Read more:** <https://en.wikipedia.org/wiki/N-gram>
+
+### A check digit is not independent of the field it already covers
+
+**What:** A mod-10 check digit catches most single errors, but a change that leaves the weighted sum unchanged mod 10 passes. A second check digit only adds protection if it weighs the same characters differently.
+
+**Why here:** A TD3 passport's composite check digit runs over the document number using the *same* positions and weights as the document number's own check. So any misreading of the number that keeps its own check passing keeps the composite passing too. A repair that searched that field for "the reading that passes" accepted wrong document numbers 8 times in 14. The rule that followed (RULES.md, D35): accept a repair only when a check that the repair could not itself satisfy confirms it.
+
+**Read more:** <https://www.icao.int/publications/Documents/9303_p3_cons_en.pdf>
+
+### JSONB does not keep your key order
+
+**What:** Postgres's `jsonb` type stores a parsed form and hands back keys in its own order: shorter keys first, then by bytes. `json` keeps the original text; `jsonb` does not.
+
+**Why here:** The audit writer hashes a payload serialised with sorted keys. The verifier hashed the text Postgres returned. For a payload like `{"status", "decision"}` the two orders differ, so every finalised case was reported as tampered — present since Phase 11, found when Phase 13 verified a real end-to-end case. The hashes were right all along; the verifier was reading them wrong. The fix is to hash what was meant (re-canonicalise), not what a storage layer chose to print.
+
+**Read more:** <https://www.postgresql.org/docs/16/datatype-json.html>
+
+### Is a difference real? The standard error of a rate
+
+**What:** A rate measured on *n* examples has a standard error of about √(p(1−p)/n). Two configurations whose rates differ by less than a couple of standard errors cannot be told apart on that data.
+
+**Why here:** A cross-encoder reranker lowered the false-positive rate from 13.45% to 12.70%. Over 2,000 negatives, one standard error of a 13% rate is about 0.75 points — the whole lift. It also doubled latency and added a model. So it does not ship, and the harness now applies that test itself (D32). The data could not tell whether the reranker helps; it could only rule out that it helps a lot.
+
+**Read more:** <https://en.wikipedia.org/wiki/Binomial_proportion_confidence_interval>
+
+### Precision depends on who shows up; a leak rate does not
+
+**What:** Precision is the share of approvals that were right, and it moves with the mix of cases arriving. The leak rate — how often a bad case of a given kind is approved — is a property of the system alone.
+
+**Why here:** The risk suite reports both. The built-in policy's auto-clear precision is 99.95%, but it sends 84% of cases to a human, because genuine faces score a median 0.683 and it needs 0.757. A tuned example policy cuts review to 23% with the same precision and an impostor leak of 0%, but the listed-person leak rises to 4.1%. Once the face gate opens, sanctions recall is the only thing between a listed person and approval. The leak rate shows which gate is doing the work.
+
+**Read more:** <https://en.wikipedia.org/wiki/Base_rate_fallacy>
+
+### Approximate search makes a compliance decision random
+
+**What:** HNSW and other approximate-nearest-neighbour indexes trade exactness for speed: they can miss a true nearest neighbour, and which one they miss depends on how the index happened to be built.
+
+**Why here:** Sanctions screening is a yes-or-no decision about a person, and its threshold is measured. An approximate index would make both depend on build randomness. At 16,000 vectors an exact scan costs milliseconds, so search is exact (D33). The trade becomes worth reconsidering only when the list is large enough for the scan to show up in latency.
+
+**Read more:** <https://qdrant.tech/documentation/concepts/search/#search-api>
+
 ---
 
 ## Coming up later (named now so you know to watch for them)
 
-- **Terraform modules & remote state** (Phase 13) — infrastructure as version-controlled code.
+- **Terraform modules & remote state** (roadmap Phase 14) — infrastructure as version-controlled code.

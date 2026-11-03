@@ -18,6 +18,6 @@ The check must cover:
 7. `scripts/verify_audit_chain.py` for the tenant.
 8. A trace in `docs/evidence/case-traces/` and a row in `docs/CASE-TRACES.md`, both written by the script.
 
-Cost: one Gemini embedding per case, plus VLM calls if the MRZ path does not apply. On this laptop real OCR cannot run outside a container.
+Cost: VLM calls if the MRZ path does not apply; screening is local (n-gram vectors) and free. Real OCR runs on this laptop at about 8 s a page.
 
 Report which path the case took, its timings and the chain result. A check that ran the path partially must say which steps were skipped.

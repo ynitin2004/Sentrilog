@@ -11,6 +11,7 @@ audit_log rows.
 """
 
 import asyncio
+import json
 import sys
 from pathlib import Path
 
@@ -18,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import asyncpg  # noqa: E402
 
-from services.common.audit_hash import compute_row_hash  # noqa: E402
+from services.common.audit_hash import canonical_payload_json, compute_row_hash  # noqa: E402
 
 # Deliberately the superuser/table-owner role, not sentrilog_app's DSN -- RLS is a no-op for
 # this role (002_multi_tenancy.sql), which is exactly what a cross-tenant verification tool
@@ -51,7 +52,12 @@ def verify_chain(rows: list[asyncpg.Record]) -> list[str]:
             actor=row["actor"],
             model_version=row["model_version"],
             input_hash=row["input_hash"],
-            payload_json=row["payload"],
+            # Re-canonicalised, not hashed as read. Postgres returns JSONB in its own key order
+            # (shorter keys first), not the sorted order the writer hashed, so hashing the text
+            # as returned reported tampering on any payload whose keys sort differently under
+            # the two rules -- {"status", "decision"}, for one, on every finalized case. Found
+            # in Phase 13 by verifying a real end-to-end case; present since Phase 11.
+            payload_json=canonical_payload_json(json.loads(row["payload"])),
             created_at=row["created_at"],
             prev_row_hash=row["prev_row_hash"],
         )

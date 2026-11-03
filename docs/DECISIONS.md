@@ -5,7 +5,7 @@ through the Quiz Rule in `CLAUDE.md`. Each entry gives the decision, the reason,
 
 - **Part 1 (D1–D19):** decisions already in the code, gathered from the [PLAN.md](../PLAN.md) changelog.
 - **Part 2 (D20–D25):** the $0 deployment, accepted as a plan and not built.
-- **Part 3 (D26–D29):** Phase 13 choices.
+- **Part 3 (D26–D39):** Phase 13: what was chosen before measuring, and what measuring changed.
 - **Part 4 (R1–R20):** the proposed roadmap. Full reasoning is in [improvements.md](../improvements.md) §5–§10.
 
 ## Part 1: In the code
@@ -125,7 +125,7 @@ host at runtime. The cost is a larger image. **Revisit:** image size blocks the 
 One run of the real path proves more than a port check, leaves a trace, and adds activity on the VM. Costs one
 Gemini embedding per run, more if the document takes the VLM path. **Revisit:** free-tier limits are hit.
 
-## Part 3: Phase 13 (agreed 2026-11-03)
+## Part 3: Phase 13 (2026-11-03)
 
 ### D26 — Local ONNX embeddings and reranker via `fastembed`, not Gemini or `sentence-transformers`
 The real OFAC list is about 40,000 names (19,484 SDN rows plus 20,204 aliases, downloaded 2026-11-03). Embedding
@@ -135,6 +135,10 @@ unrepeatable. `sentence-transformers` needs torch, which Application Control blo
 `paraphrase-multilingual-MiniLM-L12-v2` (384 dimensions) and `ms-marco-MiniLM-L-6-v2` and ran both. Gemini stays
 available behind `EmbeddingClient`. **Revisit:** the harness shows a hosted model beats the local one by more than
 its cost, or R6 (Bedrock) is built.
+
+**Update, 2026-11-03: D26 was overturned by the harness it made possible.** Its example model,
+`paraphrase-multilingual-MiniLM-L12-v2`, was the worst of four measured (D30). `fastembed` stays: it is how
+the harness compares models, and the reranker seam (D32) runs on it.
 
 ### D27 — OFAC SDN only for Phase 13; OpenSanctions waits for Phase 15
 OFAC data is US-government public domain. OpenSanctions is free only for non-commercial use, and its PEP data
@@ -152,6 +156,77 @@ extractor.
 `policy_version` in the audit chain. 13c: frontend CI and the first Playwright flow. Each has its own branch,
 at least 4 commits, a changelog entry and a tag. 13a goes first because 13b's policy is tuned against it.
 **Revisit:** never; this is sequencing.
+
+### D30 — Character n-gram vectors for screening, chosen by the harness over three embedding models
+Measured on the pinned OFAC snapshot and the 3,500-query set (`services/eval/screening.py`), at the 95% recall
+target: character 2–3-gram feature hashing (1,024 dimensions, no model) **13.45% FPR** at threshold 0.73;
+`BAAI/bge-small-en-v1.5` 23.05%; `all-MiniLM-L6-v2` 38.6%; `paraphrase-multilingual-MiniLM-L12-v2` never reaches
+95% recall at all (89.2% at best, with 99.8% FPR). A sentence model is trained on meaning, and a name has almost
+none; n-grams track spelling, which is what transliteration, typos and reordering preserve. Also deterministic
+across platforms (pure Python hashing), so CI and a laptop compute the same recall. **Revisit:** a name-trained
+model (or Bedrock, R6) beats it on the harness by more than two standard errors.
+
+### D31 — The phonetic leg is off at the shipped threshold (amends D10)
+D10 ran Double Metaphone beside vector search on the reasoning that it catches what vectors miss. With n-gram
+vectors, on the real list, it does not: the best point with it on is 95.40% recall at 14.80% FPR, against 95.67%
+at 13.45% with it off. Whole-name metaphone codes collide across the 16,162 listed names more often than they
+rescue a miss the n-grams did not already catch. The code keeps the leg (`PHONETIC_ENABLED`), and every
+comparison reports the best point both ways (`best_by_phonetic` in `services/eval/results/screening.json`). D10's principle — run independent methods and
+measure — stands; its specific claim did not survive measurement. **Revisit:** a list or query mix where the
+phonetic leg's recall gain shows up in the harness.
+
+### D32 — The reranker is built and measured, and does not ship
+A cross-encoder (`Xenova/ms-marco-MiniLM-L-6-v2`) over the n-gram candidates lowered FPR from 13.45% to 12.70% at
+the same recall target. Over 2,000 negatives one standard error of a 13% rate is about 0.75 points, so the lift is
+one standard error, at 2.2× the latency and a second model. The rule now in `select_shipped()`: a reranker ships
+only if it beats the plain configuration by more than two standard errors. Rule 2 of that function was added after
+the first comparison was read, and says so in its docstring. **Revisit:** a name-trained cross-encoder, or a
+larger negative set that can resolve a smaller lift.
+
+### D33 — Exact nearest-neighbour search, not HNSW
+An approximate index can miss a true neighbour, differently on each build, so a compliance decision and every
+measured recall would depend on index randomness. At ~16,000 vectors a full scan costs milliseconds.
+`VECTOR_SEARCH_EXACT=true`. **Revisit:** a list large enough that the scan shows in screening latency.
+
+### D34 — Screen individuals only
+7,529 of the 19,484 SDN rows are individuals; with their aliases, 16,162 indexed names. Entity, vessel and
+aircraft names can only produce false positives against a person and would triple ingest and evaluation time.
+Business screening would use them. **Revisit:** KYB.
+
+### D35 — Read the MRZ tolerantly, but never guess inside the document number
+The harness found real OCR defeating every rendered data page, for three reasons, each now fixed in production
+code with a test: EasyOCR splits a line at long `<` runs (rows are merged, `ocr._rows`); end padding stranded the
+final check digit (`mrz.fit_filler` widens the filler run instead); and letter/digit confusions in fixed-type
+positions (`mrz.parse_td3_tolerant`, resolved per field by check digit). It also found why the obvious next step is
+wrong: the composite check digit weights the document number exactly as the number's own check does, so any
+compensating substitution there passes both. Searching that field accepted 8 wrong numbers out of 14 reads; it is
+now never searched, and a failed check goes to the VLM. Line 1 has no check digit at all, so its shape and issuing
+state are validated, and the given names end at the next `<<`. **Revisit:** a VIZ cross-check of the document
+number exists to replace the VLM fallback.
+
+### D36 — The audit verifier canonicalises the payload it reads (bug fix; formula unchanged)
+`scripts/verify_audit_chain.py` hashed the JSONB text Postgres returns, but rows are hashed over sorted-key JSON,
+and JSONB orders keys shortest first. Every finalised case therefore read as tampered — present since Phase 11,
+found by verifying the Phase 13 end-to-end case. The writer, the formula and every stored hash are unchanged; only
+the verifier's reading was wrong. **Revisit:** never; the regression test pins it.
+
+### D37 — Per-tenant policy: versioned, insert-only, pinned to the case at creation
+`risk_policies` rows are never edited; a change is the next version. `cases.policy_version` is set inside the
+`INSERT` that creates the case and never re-read, so a policy change cannot alter how an in-flight case is judged
+(STUDY.md, Phase 13). The risk activity reads the version itself, so the workflow code and its event history did
+not change. The schema has no field that can reject a case (D11) or switch off a hard stop. Version 0 is the
+pre-policy behaviour, exactly, including not checking expiry. **Revisit:** a customer needs logic the schema
+cannot express (R11, OPA).
+
+### D38 — The end-to-end test parks its case through the real workflow
+`scripts/seed_e2e.py` creates a case with no documents and starts the real workflow, which parks it for review.
+Writing `status = 'needs_review'` directly would have let the test pass with no workflow listening for the
+decision. The test passes only when `finalize_case_activity` has run. **Revisit:** a full-upload flow, once the
+VLM path can run in CI.
+
+### D39 — Recall target 95%, fixed before any result was read
+The harness chooses the lowest false-positive rate among configurations meeting it. 95% is a starting bar on our
+own noise model, not a regulatory number. **Revisit:** a design partner's risk appetite, or real labelled traffic.
 
 ## Part 4: Proposed roadmap
 

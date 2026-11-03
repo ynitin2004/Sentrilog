@@ -4,8 +4,9 @@
 broken**. A decision with no guard is marked ⚠, so the gap stays visible.
 
 **Verified** means the last recorded run. The full suite ran green on CI at `v0.12.1` (2026-10-30), so
-every test guard below carries that date. Scripts run by hand carry the date they were recorded in
-[PLAN.md](../PLAN.md). How to run each: [WALKTHROUGH.md](WALKTHROUGH.md).
+every guard above the Phase 13 section carries that date; Phase 13 guards ran locally (2026-11-03).
+Scripts run by hand carry the date they were recorded in [PLAN.md](../PLAN.md) or
+[PHASE-LOG.md](PHASE-LOG.md). How to run each: [WALKTHROUGH.md](WALKTHROUGH.md).
 
 ## Tenancy and auth
 
@@ -62,9 +63,26 @@ All ⚠, because nothing is built. The intended guards, from [DEPLOY.md](DEPLOY.
 | D24 | A first-case timing recorded in the trace |
 | D25 | A new row in [CASE-TRACES.md](CASE-TRACES.md) each day |
 
+## Phase 13 (2026-11-03)
+
+| ID | Decision | Guard | Verified |
+|---|---|---|---|
+| D30, D39 | n-gram screening at the harness-chosen threshold | The `eval` CI job fails if the shipped configuration's recall is below 95% (`services/eval/report.py` `GATES`); `tests/eval/test_shipped_config.py` fails if `services/screening/config.py` drifts from `services/eval/results/screening.json` | Local, 2026-11-03 |
+| D31 | Phonetic leg off | Same as D30: the results file records `use_phonetic`, and the config test compares it | Local, 2026-11-03 |
+| D32 | Reranker not shipped | `tests/eval/test_synthetic_and_risk.py::test_select_shipped_needs_a_reranker_to_beat_two_standard_errors` | Local, 2026-11-03 |
+| D33 | Exact search | ⚠ Nothing fails if `VECTOR_SEARCH_EXACT` is switched off; the harness would still run, on an approximate index | — |
+| D34 | Individuals only | `tests/screening/test_names_and_ofac.py::test_parse_sdn_keeps_individuals_and_their_aliases_only` | Local, 2026-11-03 |
+| P-4 | Versioned snapshots, rollback by alias | `tests/screening/test_snapshots.py`: `test_hits_carry_the_list_version_of_the_active_snapshot`, `test_rollback_repoints_the_alias_and_deletes_nothing`, `test_snapshot_rows_are_insert_only_for_the_app_role` | Local, 2026-11-03 |
+| D35 | Tolerant MRZ, no document-number search | `tests/pipeline/extraction/test_mrz.py`: `test_tolerant_reading_never_guesses_inside_the_document_number`, `test_tolerant_reading_cannot_make_a_wrong_digit_pass`, `test_a_row_that_is_not_a_td3_line_1_is_rejected`, `test_noise_in_the_name_filler_is_not_part_of_the_name`; `tests/pipeline/test_ocr.py::test_merges_a_line_ocr_split_into_pieces_on_one_row` | Local, 2026-11-03 |
+| D36 | Verifier canonicalises | `tests/pipeline/test_audit.py::test_verify_accepts_payloads_whose_jsonb_key_order_differs_from_sorted_order` | Local, 2026-11-03 |
+| D37 | Versioned, pinned policy | `tests/intake/test_policy_endpoints.py` (versions only grow, tenant isolation, pinning, insert-only role); `tests/pipeline/test_policy.py` (no reject, hard stops hold, built-in = old behaviour); `test_risk_score_activity_decides_under_the_case_s_pinned_policy_version` | Local, 2026-11-03 |
+| D38 | E2E through the real workflow | `frontend/e2e/review-decision.spec.ts`, run by the `e2e` CI job | Local, 2026-11-03 |
+
 ## Open gaps worth knowing in a discussion
 
-- **No threshold has a measurement behind it** (0.55, 0.85, 0.6/0.4). The eval harness is roadmap Phase 13.
+- **The screening threshold is measured; the risk constants are not tuned yet.** The harness reports
+  auto-clear precision for the built-in policy (`services/eval/results/risk.json`), but no tenant
+  policy has been chosen from it.
 - **The split-store Postgres failure is untested.** The passing chaos test covers only the shared-store topology.
-- **No frontend CI job,** so a console regression cannot fail a build.
+- **The frontend CI jobs have not run on GitHub yet** (Phase 13c); they pass locally.
 - **No branch protection,** so a green check is informative, not required.

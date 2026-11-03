@@ -43,6 +43,11 @@ Changing a rule needs a [DECISIONS.md](DECISIONS.md) entry, and the Quiz Rule in
 - Screening is tuned for recall: a false negative is a compliance failure, a false positive is work.
 - Every place model output influences behaviour is registered in [FLOW.md](FLOW.md) §3.
 - A threshold is a guess until the eval harness measures it. Say so wherever one is cited.
+- A screening threshold or model changes only with a harness run: `services/eval/results/screening.json`
+  updated by `--write-results`, and `tests/eval/test_shipped_config.py` passing (D30, D39).
+- A repair to model or OCR output is accepted only when a check independent of the repair confirms it.
+  A check that the repair itself could satisfy is not a check (D35: the document number).
+- A risk policy can only send a case to a human. No policy field rejects, and none disables a hard stop (D37).
 
 ## 4. Testing gates
 
@@ -72,5 +77,6 @@ A phase is not done on happy-path-works. Full standard: [PLAN.md](../PLAN.md) §
 - `merge --no-ff` into `main`, tag `vX.Y.Z`.
 - Confirm with the user before any push. PR first, then merge and tag.
 - Never skip hooks.
-- `PLAN.md`'s changelog is history; closed gaps are struck through and annotated, not deleted.
+- `PLAN.md` is not edited at all; the user keeps it as written. `docs/PHASE-LOG.md` carries phases from
+  13 on, and its changelog is history: closed gaps are struck through and annotated, not deleted.
 - Every working session ends by updating `docs/MEMORY.md`.
