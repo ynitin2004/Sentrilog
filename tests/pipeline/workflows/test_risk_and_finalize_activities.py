@@ -10,6 +10,7 @@ import asyncio
 import json
 import secrets
 from collections.abc import AsyncIterator
+from typing import Any
 
 import asyncpg
 import pytest_asyncio
@@ -76,6 +77,7 @@ async def _delete_tenant(tenant_id: str) -> None:
             # audit_log.case_id references cases(id) with no ON DELETE clause (Phase 11).
             await conn.execute("DELETE FROM audit_log WHERE tenant_id = $1", tenant_id)
             await conn.execute("DELETE FROM cases WHERE tenant_id = $1", tenant_id)
+            await conn.execute("DELETE FROM risk_policies WHERE tenant_id = $1", tenant_id)
             await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
     finally:
         await conn.close()
@@ -290,4 +292,55 @@ async def test_finalize_case_activity_leaves_a_started_and_completed_audit_row()
             "finalize_case.completed",
         ]
     finally:
+        await _delete_tenant(tenant_id)
+
+
+async def test_risk_score_activity_decides_under_the_case_s_pinned_policy_version() -> None:
+    """A case is decided by the policy version it was created under, not the tenant's newest,
+    and the audit row names that version inside its hashed payload (Phase 13b)."""
+    tenant_id, case_id = await _create_tenant_and_case()
+    admin = await asyncpg.connect(dsn=_ADMIN_DSN)
+    try:
+        strict: dict[str, Any] = {
+            "auto_clear": {
+                "min_combined": 0.99,
+                "face_match_weight": 0.5,
+                "extraction_weight": 0.5,
+            },
+            "document_rules": {"review_expired": True, "expiring_within_days": None},
+            "min_face_match": None,
+            "review_nationalities": [],
+        }
+        lenient = {**strict, "auto_clear": {**strict["auto_clear"], "min_combined": 0.5}}
+        for version, document in ((1, strict), (2, lenient)):
+            await admin.execute(
+                "INSERT INTO risk_policies (tenant_id, version, document, created_by) "
+                "VALUES ($1, $2, $3, 'test')",
+                tenant_id,
+                version,
+                json.dumps(document),
+            )
+        await admin.execute("UPDATE cases SET policy_version = 1 WHERE id = $1", case_id)
+
+        output = await risk_score_activity(
+            RiskScoreInput(
+                tenant_id=tenant_id,
+                case_id=case_id,
+                extraction_confidence=0.99,
+                face_match_score=0.95,
+                sanctions_hit_count=0,
+            )
+        )
+        # 0.5*0.95 + 0.5*0.99 = 0.97: clears the newer lenient v2, not the pinned strict v1.
+        assert output.needs_review is True
+        assert output.reason is not None and "0.99" in output.reason
+
+        payload = await admin.fetchval(
+            "SELECT payload::text FROM audit_log WHERE case_id = $1 AND event_type = $2",
+            case_id,
+            "risk_score.completed",
+        )
+        assert json.loads(payload)["policy_version"] == 1
+    finally:
+        await admin.close()
         await _delete_tenant(tenant_id)
