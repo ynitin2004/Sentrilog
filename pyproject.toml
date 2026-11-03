@@ -28,6 +28,9 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.65b0",
     "opentelemetry-instrumentation-httpx>=0.65b0",
     "structlog>=26.1.0",
+    # Local ONNX embeddings and cross-encoder for sanctions screening (D26). Runs on the
+    # onnxruntime already here, not torch, which Application Control blocks on the dev host.
+    "fastembed>=0.9.1",
 ]
 
 [dependency-groups]
