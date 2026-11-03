@@ -4,14 +4,15 @@ Read this first; update it last each session.
 
 ## Current state (2026-11-03)
 
-- **Released locally:** `v0.13.0` (13a), `v0.13.1` (13b), `v0.13.2` (13c), all merged into `main`
-  with `--no-ff`. **Nothing from Phase 13 is pushed.** `origin` still has `main` at `v0.12.1` and the
-  branch `docs/project-docs-system`. Record: [PHASE-LOG.md](PHASE-LOG.md).
+- **Released and pushed:** `v0.13.0` (13a), `v0.13.1` (13b), `v0.13.2` (13c), merged into `main`
+  with `--no-ff`; `main` at `b64f237` on GitHub (it also merges PR #2, the docs branch). Record:
+  [PHASE-LOG.md](PHASE-LOG.md).
 - **Tests:** 243 passed with a key; 242 passed and 1 skipped with `GEMINI_API_KEY=""` (CI's
   configuration). ruff, black, mypy (112 files), pre-commit clean. Frontend: 38 unit tests, and the
   Playwright flow passes against the live local stack.
-- **CI:** `lint-and-test` last green on GitHub at `v0.12.1`. The `eval`, `frontend` and `e2e` jobs
-  are new and have **never run on GitHub**.
+- **CI:** all four jobs green on GitHub for `b64f237` (run 41615147116, 2026-11-03):
+  `lint-and-test`, `frontend`, `e2e` and `eval`, the last three for the first time. The eval gates
+  held on Linux.
 - **Screening** is measured: n-gram vectors at 0.73 against the real OFAC list, 95.67% recall and
   13.45% FPR on our noise model. The dev Qdrant alias `sanctions_current` points at the n-gram
   collection.
@@ -25,7 +26,6 @@ Read this first; update it last each session.
 
 | Gate | Blocked on | Owner |
 |---|---|---|
-| Push Phase 13 and watch the four CI jobs | User's go-ahead. First `eval` run pays ~30 min of face embedding | User, then `ci-watch` |
 | Deployment: [DEPLOY.md](DEPLOY.md) §4 | Approval to change code (quiz first) | Engineering |
 | Oracle account and an A1 instance | Signup (card for identity verification), regional capacity | User |
 | `GEMINI_API_KEY` repository secret | Unset by choice; the real-Gemini test and VLM eval skip on CI | User |
@@ -37,11 +37,9 @@ Read this first; update it last each session.
 
 ## Next actions
 
-1. User: decide whether to push `main`, the three tags and the phase branches. Prefer a PR first.
-2. After a push: follow all four jobs with the `ci-watch` skill. `eval` and `e2e` are the ones most
-   likely to need a fix on Linux (fonts for the OCR render, Chromium dependencies).
-3. User: Oracle account and A1 attempt ([DEPLOY.md](DEPLOY.md) §5), which can take weeks.
-4. Engineering, after the quiz: [DEPLOY.md](DEPLOY.md) §4, or roadmap Phase 14.
+1. User: consider branch protection on `main` requiring all four jobs.
+2. User: Oracle account and A1 attempt ([DEPLOY.md](DEPLOY.md) §5), which can take weeks.
+3. Engineering, after the quiz: [DEPLOY.md](DEPLOY.md) §4, or roadmap Phase 14.
 
 ## Environment facts that bit
 
@@ -81,4 +79,4 @@ Read this first; update it last each session.
   branch `docs/project-docs-system`.
 - 2026-11-03: roadmap Phase 13 as 13a/13b/13c (`v0.13.0`–`v0.13.2`, local only): evaluation harness,
   real OFAC list, measured screening threshold, MRZ reading fixes, per-tenant policies, frontend CI,
-  first Playwright flow, and a Phase 11 audit-verifier bug fixed.
+  first Playwright flow, and a Phase 11 audit-verifier bug fixed. Pushed; CI green on all four jobs.
