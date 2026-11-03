@@ -75,7 +75,9 @@ def run_extraction(samples: int, ocr: bool, vlm: bool) -> dict[str, Any]:
 
 
 def run_risk(
-    face_result: dict[str, Any] | None, screening_result: dict[str, Any] | None
+    face_result: dict[str, Any] | None,
+    screening_result: dict[str, Any] | None,
+    policy_path: str | None = None,
 ) -> dict[str, Any]:
     from . import risk
 
@@ -84,12 +86,23 @@ def run_risk(
     if face_result is None or screening_result is None:
         raise SystemExit("risk needs face and screening results: run them first, or `all`")
     point = (screening_result.get("shipped") or screening_result["chosen"])["chosen"]
+    decide: risk.Decider = risk.production_decider
+    label = "built-in, version 0 (services/common/policy.py)"
+    if policy_path:
+        from pathlib import Path
+
+        from services.common.policy import RiskPolicy
+
+        policy = RiskPolicy.model_validate_json(Path(policy_path).read_text(encoding="utf-8"))
+        decide, label = risk.policy_decider(policy), policy_path
     return risk.as_dict(
         risk.evaluate(
             genuine_scores=face_result["genuine_scores"],
             impostor_scores=face_result["impostor_scores_official"],
             screening_recall=point["recall"],
             screening_fpr=point["false_positive_rate"],
+            decide=decide,
+            policy=label,
         )
     )
 
@@ -107,6 +120,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--samples", type=int, default=300, help="extraction: identities")
     parser.add_argument("--no-ocr", action="store_true", help="extraction: skip the OCR path")
     parser.add_argument("--vlm", action="store_true", help="extraction: also call Gemini")
+    parser.add_argument("--policy", default=None, help="risk: a policy JSON file to measure")
     parser.add_argument("--record", action="store_true", help="write eval_runs rows")
     parser.add_argument("--write-results", action="store_true", help="update results/*.json")
     parser.add_argument("--report", default=None, help="append Markdown to this file")
@@ -128,7 +142,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif suite == "extraction":
             outputs[suite] = run_extraction(args.samples, not args.no_ocr, args.vlm)
         else:
-            outputs[suite] = run_risk(outputs.get("face"), outputs.get("screening"))
+            outputs[suite] = run_risk(outputs.get("face"), outputs.get("screening"), args.policy)
 
     # Persist before printing anything: a run can take twenty minutes, and the first one died
     # after finishing, on a console that could not encode the report (Windows cp1252, "≥").
