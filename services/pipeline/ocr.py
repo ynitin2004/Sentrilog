@@ -12,6 +12,8 @@ import re
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any
 
+from .extraction.mrz import fit_filler
+
 if TYPE_CHECKING:  # pragma: no cover - typing only, never imported at runtime
     import easyocr
 
@@ -42,28 +44,58 @@ def _get_reader() -> "easyocr.Reader":
     return easyocr.Reader(["en"], gpu=False, verbose=False)
 
 
+def _rows(ocr_results: list[OCRResult]) -> list[tuple[float, str]]:
+    """Groups detected boxes into text rows: (row top, the row's text read left to right).
+
+    EasyOCR does not return one box per MRZ line. A long run of '<' filler splits a line into
+    separate boxes ("P<INDRAHMAN<<ELIF<<<<<<<" and "<<<<<<" on the same baseline), and neither
+    piece alone is long enough to look like an MRZ line. Found by the Phase 13 evaluation
+    harness: before rows were merged, 30 of 30 synthetic data pages yielded no MRZ at all.
+
+    Two boxes are on the same row when their vertical centres are closer than half the taller
+    box's height -- tight enough that the two MRZ lines, which sit one line-height apart, never
+    merge into one.
+    """
+    boxes = []
+    for bbox, text, _confidence in ocr_results:
+        ys = [point[1] for point in bbox]
+        xs = [point[0] for point in bbox]
+        boxes.append((min(ys), max(ys), min(xs), re.sub(r"\s", "", text).upper()))
+    boxes.sort(key=lambda b: (b[0] + b[1]) / 2)
+
+    rows: list[list[tuple[float, float, float, str]]] = []
+    for box in boxes:
+        centre, height = (box[0] + box[1]) / 2, box[1] - box[0]
+        if rows:
+            last = rows[-1][-1]
+            last_centre, last_height = (last[0] + last[1]) / 2, last[1] - last[0]
+            if abs(centre - last_centre) < max(height, last_height) / 2:
+                rows[-1].append(box)
+                continue
+        rows.append([box])
+    return [
+        (min(b[0] for b in row), "".join(b[3] for b in sorted(row, key=lambda b: b[2])))
+        for row in rows
+    ]
+
+
 def _assemble_mrz_lines(ocr_results: list[OCRResult]) -> tuple[str, str] | None:
     """Pure assembly logic, independently testable without EasyOCR/torch: given detected text
-    boxes, picks the bottom two MRZ-length-ish lines (the MRZ is always at the bottom of the
-    document) ordered top-to-bottom by their own bounding box, not by whatever order the OCR
-    engine happened to return them in.
+    boxes, merges them into rows (see _rows) and picks the bottom two MRZ-length-ish rows (the
+    MRZ is always at the bottom of the document), ordered top-to-bottom by position, not by
+    whatever order the OCR engine happened to return them in.
     """
-    candidates: list[tuple[float, str]] = []
-    for bbox, text, _confidence in ocr_results:
-        cleaned = re.sub(r"\s", "", text).upper()
-        if len(cleaned) >= _MIN_PLAUSIBLE_LENGTH:
-            top_y = min(point[1] for point in bbox)
-            candidates.append((top_y, cleaned))
-
+    candidates = [
+        (top_y, text) for top_y, text in _rows(ocr_results) if len(text) >= _MIN_PLAUSIBLE_LENGTH
+    ]
     if len(candidates) < 2:
         return None
 
     candidates.sort(key=lambda c: c[0])
     line1, line2 = candidates[-2][1], candidates[-1][1]
-    return (
-        line1.ljust(_MRZ_LINE_LENGTH, "<")[:_MRZ_LINE_LENGTH],
-        line2.ljust(_MRZ_LINE_LENGTH, "<")[:_MRZ_LINE_LENGTH],
-    )
+    # Widen the filler run rather than pad at the end: OCR shortens long '<' runs, and end
+    # padding strands everything after the run out of position (see mrz.fit_filler).
+    return fit_filler(line1), fit_filler(line2)
 
 
 def read_mrz_lines(image_bytes: bytes) -> tuple[str, str] | None:

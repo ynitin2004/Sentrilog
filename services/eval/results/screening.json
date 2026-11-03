@@ -1,0 +1,1136 @@
+{
+  "chosen": {
+    "chosen": {
+      "false_positive_rate": 0.1345,
+      "recall": 0.9566666666666667,
+      "rerank_threshold": null,
+      "use_phonetic": false,
+      "vector_threshold": 0.73
+    },
+    "consistency_checked": true,
+    "curve": [
+      {
+        "false_positive_rate": 0.9995,
+        "recall": 1.0,
+        "threshold": 0.3
+      },
+      {
+        "false_positive_rate": 0.9835,
+        "recall": 1.0,
+        "threshold": 0.35
+      },
+      {
+        "false_positive_rate": 0.9425,
+        "recall": 0.9993333333333333,
+        "threshold": 0.4
+      },
+      {
+        "false_positive_rate": 0.8535,
+        "recall": 0.9993333333333333,
+        "threshold": 0.45
+      },
+      {
+        "false_positive_rate": 0.74,
+        "recall": 0.9993333333333333,
+        "threshold": 0.5
+      },
+      {
+        "false_positive_rate": 0.579,
+        "recall": 0.9993333333333333,
+        "threshold": 0.55
+      },
+      {
+        "false_positive_rate": 0.4005,
+        "recall": 0.9953333333333333,
+        "threshold": 0.6
+      },
+      {
+        "false_positive_rate": 0.2685,
+        "recall": 0.9893333333333333,
+        "threshold": 0.65
+      },
+      {
+        "false_positive_rate": 0.1805,
+        "recall": 0.974,
+        "threshold": 0.7
+      },
+      {
+        "false_positive_rate": 0.113,
+        "recall": 0.94,
+        "threshold": 0.75
+      },
+      {
+        "false_positive_rate": 0.0365,
+        "recall": 0.8673333333333333,
+        "threshold": 0.8
+      },
+      {
+        "false_positive_rate": 0.0055,
+        "recall": 0.7333333333333333,
+        "threshold": 0.85
+      },
+      {
+        "false_positive_rate": 0.001,
+        "recall": 0.5526666666666666,
+        "threshold": 0.9
+      },
+      {
+        "false_positive_rate": 0.0,
+        "recall": 0.29333333333333333,
+        "threshold": 0.95
+      },
+      {
+        "false_positive_rate": 0.0,
+        "recall": 0.14133333333333334,
+        "threshold": 1.0
+      }
+    ],
+    "embedding": "ngram:char-ngram-2-3",
+    "extra": {
+      "best_by_phonetic": {
+        "off": {
+          "false_positive_rate": 0.1345,
+          "recall": 0.9566666666666667,
+          "rerank_threshold": null,
+          "target_met": true,
+          "use_phonetic": false,
+          "vector_threshold": 0.73
+        },
+        "on": {
+          "false_positive_rate": 0.148,
+          "recall": 0.954,
+          "rerank_threshold": null,
+          "target_met": true,
+          "use_phonetic": true,
+          "vector_threshold": 0.74
+        }
+      },
+      "collection": "eval-e568aca69f-char-ngram-2-3-1024",
+      "list_content_hash": "e568aca69f09936a5e8c71b79ead3b028a690a24b2a746456996524deb2e7124",
+      "queries": 3500
+    },
+    "fpr_by_kind": {
+      "negative_hard": 0.247,
+      "negative_synthetic": 0.022
+    },
+    "ms_per_screen": 28.483412428571423,
+    "recall_by_transform": {
+      "drop_token": 0.8599348534201955,
+      "particle": 0.9722222222222222,
+      "surname_first": 0.997872340425532,
+      "transliteration": 0.9384920634920635,
+      "typo": 0.925601750547046
+    },
+    "reranker": null,
+    "target_met": true
+  },
+  "compared": [
+    {
+      "chosen": {
+        "false_positive_rate": 0.1345,
+        "recall": 0.9566666666666667,
+        "rerank_threshold": null,
+        "use_phonetic": false,
+        "vector_threshold": 0.73
+      },
+      "consistency_checked": true,
+      "curve": [
+        {
+          "false_positive_rate": 0.9995,
+          "recall": 1.0,
+          "threshold": 0.3
+        },
+        {
+          "false_positive_rate": 0.9835,
+          "recall": 1.0,
+          "threshold": 0.35
+        },
+        {
+          "false_positive_rate": 0.9425,
+          "recall": 0.9993333333333333,
+          "threshold": 0.4
+        },
+        {
+          "false_positive_rate": 0.8535,
+          "recall": 0.9993333333333333,
+          "threshold": 0.45
+        },
+        {
+          "false_positive_rate": 0.74,
+          "recall": 0.9993333333333333,
+          "threshold": 0.5
+        },
+        {
+          "false_positive_rate": 0.579,
+          "recall": 0.9993333333333333,
+          "threshold": 0.55
+        },
+        {
+          "false_positive_rate": 0.4005,
+          "recall": 0.9953333333333333,
+          "threshold": 0.6
+        },
+        {
+          "false_positive_rate": 0.2685,
+          "recall": 0.9893333333333333,
+          "threshold": 0.65
+        },
+        {
+          "false_positive_rate": 0.1805,
+          "recall": 0.974,
+          "threshold": 0.7
+        },
+        {
+          "false_positive_rate": 0.113,
+          "recall": 0.94,
+          "threshold": 0.75
+        },
+        {
+          "false_positive_rate": 0.0365,
+          "recall": 0.8673333333333333,
+          "threshold": 0.8
+        },
+        {
+          "false_positive_rate": 0.0055,
+          "recall": 0.7333333333333333,
+          "threshold": 0.85
+        },
+        {
+          "false_positive_rate": 0.001,
+          "recall": 0.5526666666666666,
+          "threshold": 0.9
+        },
+        {
+          "false_positive_rate": 0.0,
+          "recall": 0.29333333333333333,
+          "threshold": 0.95
+        },
+        {
+          "false_positive_rate": 0.0,
+          "recall": 0.14133333333333334,
+          "threshold": 1.0
+        }
+      ],
+      "embedding": "ngram:char-ngram-2-3",
+      "extra": {
+        "best_by_phonetic": {
+          "off": {
+            "false_positive_rate": 0.1345,
+            "recall": 0.9566666666666667,
+            "rerank_threshold": null,
+            "target_met": true,
+            "use_phonetic": false,
+            "vector_threshold": 0.73
+          },
+          "on": {
+            "false_positive_rate": 0.148,
+            "recall": 0.954,
+            "rerank_threshold": null,
+            "target_met": true,
+            "use_phonetic": true,
+            "vector_threshold": 0.74
+          }
+        },
+        "collection": "eval-e568aca69f-char-ngram-2-3-1024",
+        "list_content_hash": "e568aca69f09936a5e8c71b79ead3b028a690a24b2a746456996524deb2e7124",
+        "queries": 3500
+      },
+      "fpr_by_kind": {
+        "negative_hard": 0.247,
+        "negative_synthetic": 0.022
+      },
+      "ms_per_screen": 28.483412428571423,
+      "recall_by_transform": {
+        "drop_token": 0.8599348534201955,
+        "particle": 0.9722222222222222,
+        "surname_first": 0.997872340425532,
+        "transliteration": 0.9384920634920635,
+        "typo": 0.925601750547046
+      },
+      "reranker": null,
+      "target_met": true
+    },
+    {
+      "chosen": {
+        "false_positive_rate": 0.127,
+        "recall": 0.95,
+        "rerank_threshold": -4.412,
+        "use_phonetic": true,
+        "vector_threshold": 0.74
+      },
+      "consistency_checked": true,
+      "curve": [
+        {
+          "false_positive_rate": 0.873,
+          "recall": 0.994,
+          "threshold": 0.3
+        },
+        {
+          "false_positive_rate": 0.855,
+          "recall": 0.994,
+          "threshold": 0.35
+        },
+        {
+          "false_positive_rate": 0.8155,
+          "recall": 0.994,
+          "threshold": 0.4
+        },
+        {
+          "false_positive_rate": 0.747,
+          "recall": 0.994,
+          "threshold": 0.45
+        },
+        {
+          "false_positive_rate": 0.6485,
+          "recall": 0.9933333333333333,
+          "threshold": 0.5
+        },
+        {
+          "false_positive_rate": 0.5155,
+          "recall": 0.9933333333333333,
+          "threshold": 0.55
+        },
+        {
+          "false_positive_rate": 0.3735,
+          "recall": 0.9913333333333333,
+          "threshold": 0.6
+        },
+        {
+          "false_positive_rate": 0.262,
+          "recall": 0.986,
+          "threshold": 0.65
+        },
+        {
+          "false_positive_rate": 0.1805,
+          "recall": 0.972,
+          "threshold": 0.7
+        },
+        {
+          "false_positive_rate": 0.1185,
+          "recall": 0.9446666666666667,
+          "threshold": 0.75
+        },
+        {
+          "false_positive_rate": 0.0425,
+          "recall": 0.8946666666666667,
+          "threshold": 0.8
+        },
+        {
+          "false_positive_rate": 0.0115,
+          "recall": 0.814,
+          "threshold": 0.85
+        },
+        {
+          "false_positive_rate": 0.007,
+          "recall": 0.714,
+          "threshold": 0.9
+        },
+        {
+          "false_positive_rate": 0.0065,
+          "recall": 0.596,
+          "threshold": 0.95
+        },
+        {
+          "false_positive_rate": 0.0065,
+          "recall": 0.488,
+          "threshold": 1.0
+        }
+      ],
+      "embedding": "ngram:char-ngram-2-3",
+      "extra": {
+        "best_by_phonetic": {
+          "off": {
+            "false_positive_rate": 0.1325,
+            "recall": 0.9526666666666667,
+            "rerank_threshold": -4.412,
+            "target_met": true,
+            "use_phonetic": false,
+            "vector_threshold": 0.73
+          },
+          "on": {
+            "false_positive_rate": 0.127,
+            "recall": 0.95,
+            "rerank_threshold": -4.412,
+            "target_met": true,
+            "use_phonetic": true,
+            "vector_threshold": 0.74
+          }
+        },
+        "collection": "eval-e568aca69f-char-ngram-2-3-1024",
+        "list_content_hash": "e568aca69f09936a5e8c71b79ead3b028a690a24b2a746456996524deb2e7124",
+        "queries": 3500
+      },
+      "fpr_by_kind": {
+        "negative_hard": 0.23,
+        "negative_synthetic": 0.024
+      },
+      "ms_per_screen": 52.66320722857173,
+      "recall_by_transform": {
+        "drop_token": 0.8306188925081434,
+        "particle": 0.9444444444444444,
+        "surname_first": 0.9936170212765958,
+        "transliteration": 0.9285714285714286,
+        "typo": 0.9277899343544858
+      },
+      "reranker": "Xenova/ms-marco-MiniLM-L-6-v2",
+      "target_met": true
+    },
+    {
+      "chosen": {
+        "false_positive_rate": 0.998,
+        "recall": 0.892,
+        "rerank_threshold": null,
+        "use_phonetic": true,
+        "vector_threshold": 0.59
+      },
+      "consistency_checked": true,
+      "curve": [
+        {
+          "false_positive_rate": 1.0,
+          "recall": 0.892,
+          "threshold": 0.3
+        },
+        {
+          "false_positive_rate": 1.0,
+          "recall": 0.892,
+          "threshold": 0.35
+        },
+        {
+          "false_positive_rate": 1.0,
+          "recall": 0.892,
+          "threshold": 0.4
+        },
+        {
+          "false_positive_rate": 1.0,
+          "recall": 0.892,
+          "threshold": 0.45
+        },
+        {
+          "false_positive_rate": 1.0,
+          "recall": 0.892,
+          "threshold": 0.5
+        },
+        {
+          "false_positive_rate": 1.0,
+          "recall": 0.892,
+          "threshold": 0.55
+        },
+        {
+          "false_positive_rate": 0.998,
+          "recall": 0.8913333333333333,
+          "threshold": 0.6
+        },
+        {
+          "false_positive_rate": 0.993,
+          "recall": 0.89,
+          "threshold": 0.65
+        },
+        {
+          "false_positive_rate": 0.977,
+          "recall": 0.89,
+          "threshold": 0.7
+        },
+        {
+          "false_positive_rate": 0.9115,
+          "recall": 0.8846666666666667,
+          "threshold": 0.75
+        },
+        {
+          "false_positive_rate": 0.813,
+          "recall": 0.8726666666666667,
+          "threshold": 0.8
+        },
+        {
+          "false_positive_rate": 0.6055,
+          "recall": 0.8473333333333334,
+          "threshold": 0.85
+        },
+        {
+          "false_positive_rate": 0.33,
+          "recall": 0.784,
+          "threshold": 0.9
+        },
+        {
+          "false_positive_rate": 0.078,
+          "recall": 0.6333333333333333,
+          "threshold": 0.95
+        },
+        {
+          "false_positive_rate": 0.027,
+          "recall": 0.34933333333333333,
+          "threshold": 1.0
+        }
+      ],
+      "embedding": "fastembed:sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      "extra": {
+        "best_by_phonetic": {
+          "off": {
+            "false_positive_rate": 0.999,
+            "recall": 0.8426666666666667,
+            "rerank_threshold": null,
+            "target_met": false,
+            "use_phonetic": false,
+            "vector_threshold": 0.58
+          },
+          "on": {
+            "false_positive_rate": 0.998,
+            "recall": 0.892,
+            "rerank_threshold": null,
+            "target_met": false,
+            "use_phonetic": true,
+            "vector_threshold": 0.59
+          }
+        },
+        "collection": "eval-e568aca69f-paraphrase-multilingual-minilm-l12-v2-384",
+        "list_content_hash": "e568aca69f09936a5e8c71b79ead3b028a690a24b2a746456996524deb2e7124",
+        "queries": 3500
+      },
+      "fpr_by_kind": {
+        "negative_hard": 1.0,
+        "negative_synthetic": 0.996
+      },
+      "ms_per_screen": 30.424346742857132,
+      "recall_by_transform": {
+        "drop_token": 0.7719869706840391,
+        "particle": 0.7777777777777778,
+        "surname_first": 0.9042553191489362,
+        "transliteration": 0.8888888888888888,
+        "typo": 0.8665207877461707
+      },
+      "reranker": null,
+      "target_met": false
+    },
+    {
+      "chosen": {
+        "false_positive_rate": 0.821,
+        "recall": 0.892,
+        "rerank_threshold": -9.981,
+        "use_phonetic": true,
+        "vector_threshold": 0.57
+      },
+      "consistency_checked": true,
+      "curve": [
+        {
+          "false_positive_rate": 0.8225,
+          "recall": 0.892,
+          "threshold": 0.3
+        },
+        {
+          "false_positive_rate": 0.8225,
+          "recall": 0.892,
+          "threshold": 0.35
+        },
+        {
+          "false_positive_rate": 0.8225,
+          "recall": 0.892,
+          "threshold": 0.4
+        },
+        {
+          "false_positive_rate": 0.8225,
+          "recall": 0.892,
+          "threshold": 0.45
+        },
+        {
+          "false_positive_rate": 0.8225,
+          "recall": 0.892,
+          "threshold": 0.5
+        },
+        {
+          "false_positive_rate": 0.822,
+          "recall": 0.892,
+          "threshold": 0.55
+        },
+        {
+          "false_positive_rate": 0.821,
+          "recall": 0.8913333333333333,
+          "threshold": 0.6
+        },
+        {
+          "false_positive_rate": 0.8145,
+          "recall": 0.89,
+          "threshold": 0.65
+        },
+        {
+          "false_positive_rate": 0.7915,
+          "recall": 0.8893333333333333,
+          "threshold": 0.7
+        },
+        {
+          "false_positive_rate": 0.735,
+          "recall": 0.8846666666666667,
+          "threshold": 0.75
+        },
+        {
+          "false_positive_rate": 0.6335,
+          "recall": 0.8726666666666667,
+          "threshold": 0.8
+        },
+        {
+          "false_positive_rate": 0.4625,
+          "recall": 0.8473333333333334,
+          "threshold": 0.85
+        },
+        {
+          "false_positive_rate": 0.2325,
+          "recall": 0.784,
+          "threshold": 0.9
+        },
+        {
+          "false_positive_rate": 0.0525,
+          "recall": 0.6333333333333333,
+          "threshold": 0.95
+        },
+        {
+          "false_positive_rate": 0.012,
+          "recall": 0.34933333333333333,
+          "threshold": 1.0
+        }
+      ],
+      "embedding": "fastembed:sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+      "extra": {
+        "best_by_phonetic": {
+          "off": {
+            "false_positive_rate": 0.821,
+            "recall": 0.8426666666666667,
+            "rerank_threshold": -9.981,
+            "target_met": false,
+            "use_phonetic": false,
+            "vector_threshold": 0.57
+          },
+          "on": {
+            "false_positive_rate": 0.821,
+            "recall": 0.892,
+            "rerank_threshold": -9.981,
+            "target_met": false,
+            "use_phonetic": true,
+            "vector_threshold": 0.57
+          }
+        },
+        "collection": "eval-e568aca69f-paraphrase-multilingual-minilm-l12-v2-384",
+        "list_content_hash": "e568aca69f09936a5e8c71b79ead3b028a690a24b2a746456996524deb2e7124",
+        "queries": 3500
+      },
+      "fpr_by_kind": {
+        "negative_hard": 0.866,
+        "negative_synthetic": 0.776
+      },
+      "ms_per_screen": 54.02657031428576,
+      "recall_by_transform": {
+        "drop_token": 0.7719869706840391,
+        "particle": 0.7777777777777778,
+        "surname_first": 0.9042553191489362,
+        "transliteration": 0.8888888888888888,
+        "typo": 0.8665207877461707
+      },
+      "reranker": "Xenova/ms-marco-MiniLM-L-6-v2",
+      "target_met": false
+    },
+    {
+      "chosen": {
+        "false_positive_rate": 0.386,
+        "recall": 0.95,
+        "rerank_threshold": null,
+        "use_phonetic": true,
+        "vector_threshold": 0.73
+      },
+      "consistency_checked": true,
+      "curve": [
+        {
+          "false_positive_rate": 1.0,
+          "recall": 0.9953333333333333,
+          "threshold": 0.3
+        },
+        {
+          "false_positive_rate": 1.0,
+          "recall": 0.9953333333333333,
+          "threshold": 0.35
+        },
+        {
+          "false_positive_rate": 1.0,
+          "recall": 0.9953333333333333,
+          "threshold": 0.4
+        },
+        {
+          "false_positive_rate": 1.0,
+          "recall": 0.994,
+          "threshold": 0.45
+        },
+        {
+          "false_positive_rate": 0.9965,
+          "recall": 0.9933333333333333,
+          "threshold": 0.5
+        },
+        {
+          "false_positive_rate": 0.974,
+          "recall": 0.9913333333333333,
+          "threshold": 0.55
+        },
+        {
+          "false_positive_rate": 0.861,
+          "recall": 0.9866666666666667,
+          "threshold": 0.6
+        },
+        {
+          "false_positive_rate": 0.717,
+          "recall": 0.9806666666666667,
+          "threshold": 0.65
+        },
+        {
+          "false_positive_rate": 0.5245,
+          "recall": 0.968,
+          "threshold": 0.7
+        },
+        {
+          "false_positive_rate": 0.305,
+          "recall": 0.9413333333333334,
+          "threshold": 0.75
+        },
+        {
+          "false_positive_rate": 0.149,
+          "recall": 0.9046666666666666,
+          "threshold": 0.8
+        },
+        {
+          "false_positive_rate": 0.068,
+          "recall": 0.844,
+          "threshold": 0.85
+        },
+        {
+          "false_positive_rate": 0.0325,
+          "recall": 0.7346666666666667,
+          "threshold": 0.9
+        },
+        {
+          "false_positive_rate": 0.027,
+          "recall": 0.6166666666666667,
+          "threshold": 0.95
+        },
+        {
+          "false_positive_rate": 0.027,
+          "recall": 0.34933333333333333,
+          "threshold": 1.0
+        }
+      ],
+      "embedding": "fastembed:sentence-transformers/all-MiniLM-L6-v2",
+      "extra": {
+        "best_by_phonetic": {
+          "off": {
+            "false_positive_rate": 0.5945,
+            "recall": 0.952,
+            "rerank_threshold": null,
+            "target_met": true,
+            "use_phonetic": false,
+            "vector_threshold": 0.68
+          },
+          "on": {
+            "false_positive_rate": 0.386,
+            "recall": 0.95,
+            "rerank_threshold": null,
+            "target_met": true,
+            "use_phonetic": true,
+            "vector_threshold": 0.73
+          }
+        },
+        "collection": "eval-e568aca69f-all-minilm-l6-v2-384",
+        "list_content_hash": "e568aca69f09936a5e8c71b79ead3b028a690a24b2a746456996524deb2e7124",
+        "queries": 3500
+      },
+      "fpr_by_kind": {
+        "negative_hard": 0.487,
+        "negative_synthetic": 0.285
+      },
+      "ms_per_screen": 28.389411114285654,
+      "recall_by_transform": {
+        "drop_token": 0.8957654723127035,
+        "particle": 0.9722222222222222,
+        "surname_first": 0.9851063829787234,
+        "transliteration": 0.9206349206349206,
+        "typo": 0.9037199124726477
+      },
+      "reranker": null,
+      "target_met": true
+    },
+    {
+      "chosen": {
+        "false_positive_rate": 0.3215,
+        "recall": 0.9526666666666667,
+        "rerank_threshold": 0.582,
+        "use_phonetic": true,
+        "vector_threshold": 0.68
+      },
+      "consistency_checked": true,
+      "curve": [
+        {
+          "false_positive_rate": 0.468,
+          "recall": 0.9613333333333334,
+          "threshold": 0.3
+        },
+        {
+          "false_positive_rate": 0.468,
+          "recall": 0.9613333333333334,
+          "threshold": 0.35
+        },
+        {
+          "false_positive_rate": 0.468,
+          "recall": 0.9613333333333334,
+          "threshold": 0.4
+        },
+        {
+          "false_positive_rate": 0.468,
+          "recall": 0.9606666666666667,
+          "threshold": 0.45
+        },
+        {
+          "false_positive_rate": 0.4665,
+          "recall": 0.9606666666666667,
+          "threshold": 0.5
+        },
+        {
+          "false_positive_rate": 0.452,
+          "recall": 0.96,
+          "threshold": 0.55
+        },
+        {
+          "false_positive_rate": 0.4225,
+          "recall": 0.9593333333333334,
+          "threshold": 0.6
+        },
+        {
+          "false_positive_rate": 0.3665,
+          "recall": 0.956,
+          "threshold": 0.65
+        },
+        {
+          "false_positive_rate": 0.288,
+          "recall": 0.9466666666666667,
+          "threshold": 0.7
+        },
+        {
+          "false_positive_rate": 0.185,
+          "recall": 0.9213333333333333,
+          "threshold": 0.75
+        },
+        {
+          "false_positive_rate": 0.0925,
+          "recall": 0.8866666666666667,
+          "threshold": 0.8
+        },
+        {
+          "false_positive_rate": 0.034,
+          "recall": 0.8266666666666667,
+          "threshold": 0.85
+        },
+        {
+          "false_positive_rate": 0.007,
+          "recall": 0.7173333333333334,
+          "threshold": 0.9
+        },
+        {
+          "false_positive_rate": 0.002,
+          "recall": 0.598,
+          "threshold": 0.95
+        },
+        {
+          "false_positive_rate": 0.002,
+          "recall": 0.33066666666666666,
+          "threshold": 1.0
+        }
+      ],
+      "embedding": "fastembed:sentence-transformers/all-MiniLM-L6-v2",
+      "extra": {
+        "best_by_phonetic": {
+          "off": {
+            "false_positive_rate": 0.3895,
+            "recall": 0.952,
+            "rerank_threshold": 0.582,
+            "target_met": true,
+            "use_phonetic": false,
+            "vector_threshold": 0.63
+          },
+          "on": {
+            "false_positive_rate": 0.3215,
+            "recall": 0.9526666666666667,
+            "rerank_threshold": 0.582,
+            "target_met": true,
+            "use_phonetic": true,
+            "vector_threshold": 0.68
+          }
+        },
+        "collection": "eval-e568aca69f-all-minilm-l6-v2-384",
+        "list_content_hash": "e568aca69f09936a5e8c71b79ead3b028a690a24b2a746456996524deb2e7124",
+        "queries": 3500
+      },
+      "fpr_by_kind": {
+        "negative_hard": 0.518,
+        "negative_synthetic": 0.125
+      },
+      "ms_per_screen": 50.9756378571427,
+      "recall_by_transform": {
+        "drop_token": 0.9478827361563518,
+        "particle": 0.9722222222222222,
+        "surname_first": 0.9851063829787234,
+        "transliteration": 0.9087301587301587,
+        "typo": 0.912472647702407
+      },
+      "reranker": "Xenova/ms-marco-MiniLM-L-6-v2",
+      "target_met": true
+    },
+    {
+      "chosen": {
+        "false_positive_rate": 0.2305,
+        "recall": 0.9566666666666667,
+        "rerank_threshold": null,
+        "use_phonetic": true,
+        "vector_threshold": 0.79
+      },
+      "consistency_checked": true,
+      "curve": [
+        {
+          "false_positive_rate": 1.0,
+          "recall": 0.9953333333333333,
+          "threshold": 0.3
+        },
+        {
+          "false_positive_rate": 1.0,
+          "recall": 0.9953333333333333,
+          "threshold": 0.35
+        },
+        {
+          "false_positive_rate": 1.0,
+          "recall": 0.9953333333333333,
+          "threshold": 0.4
+        },
+        {
+          "false_positive_rate": 1.0,
+          "recall": 0.9953333333333333,
+          "threshold": 0.45
+        },
+        {
+          "false_positive_rate": 1.0,
+          "recall": 0.9953333333333333,
+          "threshold": 0.5
+        },
+        {
+          "false_positive_rate": 1.0,
+          "recall": 0.9953333333333333,
+          "threshold": 0.55
+        },
+        {
+          "false_positive_rate": 1.0,
+          "recall": 0.9953333333333333,
+          "threshold": 0.6
+        },
+        {
+          "false_positive_rate": 0.9495,
+          "recall": 0.9946666666666667,
+          "threshold": 0.65
+        },
+        {
+          "false_positive_rate": 0.762,
+          "recall": 0.9893333333333333,
+          "threshold": 0.7
+        },
+        {
+          "false_positive_rate": 0.476,
+          "recall": 0.9693333333333334,
+          "threshold": 0.75
+        },
+        {
+          "false_positive_rate": 0.193,
+          "recall": 0.9493333333333334,
+          "threshold": 0.8
+        },
+        {
+          "false_positive_rate": 0.0745,
+          "recall": 0.8973333333333333,
+          "threshold": 0.85
+        },
+        {
+          "false_positive_rate": 0.035,
+          "recall": 0.804,
+          "threshold": 0.9
+        },
+        {
+          "false_positive_rate": 0.0275,
+          "recall": 0.626,
+          "threshold": 0.95
+        },
+        {
+          "false_positive_rate": 0.027,
+          "recall": 0.34933333333333333,
+          "threshold": 1.0
+        }
+      ],
+      "embedding": "fastembed:BAAI/bge-small-en-v1.5",
+      "extra": {
+        "best_by_phonetic": {
+          "off": {
+            "false_positive_rate": 0.462,
+            "recall": 0.9513333333333334,
+            "rerank_threshold": null,
+            "target_met": true,
+            "use_phonetic": false,
+            "vector_threshold": 0.75
+          },
+          "on": {
+            "false_positive_rate": 0.2305,
+            "recall": 0.9566666666666667,
+            "rerank_threshold": null,
+            "target_met": true,
+            "use_phonetic": true,
+            "vector_threshold": 0.79
+          }
+        },
+        "collection": "eval-e568aca69f-bge-small-en-v1-5-384",
+        "list_content_hash": "e568aca69f09936a5e8c71b79ead3b028a690a24b2a746456996524deb2e7124",
+        "queries": 3500
+      },
+      "fpr_by_kind": {
+        "negative_hard": 0.362,
+        "negative_synthetic": 0.099
+      },
+      "ms_per_screen": 31.127764200000197,
+      "recall_by_transform": {
+        "drop_token": 0.9087947882736156,
+        "particle": 0.9444444444444444,
+        "surname_first": 0.9851063829787234,
+        "transliteration": 0.9285714285714286,
+        "typo": 0.9102844638949672
+      },
+      "reranker": null,
+      "target_met": true
+    },
+    {
+      "chosen": {
+        "false_positive_rate": 0.2065,
+        "recall": 0.95,
+        "rerank_threshold": -2.44,
+        "use_phonetic": true,
+        "vector_threshold": 0.79
+      },
+      "consistency_checked": true,
+      "curve": [
+        {
+          "false_positive_rate": 0.783,
+          "recall": 0.9826666666666667,
+          "threshold": 0.3
+        },
+        {
+          "false_positive_rate": 0.783,
+          "recall": 0.9826666666666667,
+          "threshold": 0.35
+        },
+        {
+          "false_positive_rate": 0.783,
+          "recall": 0.9826666666666667,
+          "threshold": 0.4
+        },
+        {
+          "false_positive_rate": 0.783,
+          "recall": 0.9826666666666667,
+          "threshold": 0.45
+        },
+        {
+          "false_positive_rate": 0.783,
+          "recall": 0.9826666666666667,
+          "threshold": 0.5
+        },
+        {
+          "false_positive_rate": 0.783,
+          "recall": 0.9826666666666667,
+          "threshold": 0.55
+        },
+        {
+          "false_positive_rate": 0.7815,
+          "recall": 0.9826666666666667,
+          "threshold": 0.6
+        },
+        {
+          "false_positive_rate": 0.7645,
+          "recall": 0.9826666666666667,
+          "threshold": 0.65
+        },
+        {
+          "false_positive_rate": 0.6555,
+          "recall": 0.978,
+          "threshold": 0.7
+        },
+        {
+          "false_positive_rate": 0.423,
+          "recall": 0.962,
+          "threshold": 0.75
+        },
+        {
+          "false_positive_rate": 0.1695,
+          "recall": 0.9426666666666667,
+          "threshold": 0.8
+        },
+        {
+          "false_positive_rate": 0.053,
+          "recall": 0.8906666666666667,
+          "threshold": 0.85
+        },
+        {
+          "false_positive_rate": 0.0135,
+          "recall": 0.7973333333333333,
+          "threshold": 0.9
+        },
+        {
+          "false_positive_rate": 0.006,
+          "recall": 0.6186666666666667,
+          "threshold": 0.95
+        },
+        {
+          "false_positive_rate": 0.0055,
+          "recall": 0.342,
+          "threshold": 1.0
+        }
+      ],
+      "embedding": "fastembed:BAAI/bge-small-en-v1.5",
+      "extra": {
+        "best_by_phonetic": {
+          "off": {
+            "false_positive_rate": 0.376,
+            "recall": 0.9506666666666667,
+            "rerank_threshold": 1.099,
+            "target_met": true,
+            "use_phonetic": false,
+            "vector_threshold": 0.73
+          },
+          "on": {
+            "false_positive_rate": 0.2065,
+            "recall": 0.95,
+            "rerank_threshold": -2.44,
+            "target_met": true,
+            "use_phonetic": true,
+            "vector_threshold": 0.79
+          }
+        },
+        "collection": "eval-e568aca69f-bge-small-en-v1-5-384",
+        "list_content_hash": "e568aca69f09936a5e8c71b79ead3b028a690a24b2a746456996524deb2e7124",
+        "queries": 3500
+      },
+      "fpr_by_kind": {
+        "negative_hard": 0.338,
+        "negative_synthetic": 0.075
+      },
+      "ms_per_screen": 52.59316462857143,
+      "recall_by_transform": {
+        "drop_token": 0.9087947882736156,
+        "particle": 0.9444444444444444,
+        "surname_first": 0.9851063829787234,
+        "transliteration": 0.9126984126984127,
+        "typo": 0.899343544857768
+      },
+      "reranker": "Xenova/ms-marco-MiniLM-L-6-v2",
+      "target_met": true
+    }
+  ],
+  "dataset": {
+    "list": "ofac-sdn-20261103",
+    "name": "screening-queries-v1",
+    "noise_model": "ours: transliteration, typo, dropped token, surname-first, particle",
+    "sha256": "5ef15c4e3c973a25e4e433babfb98791ac078e7dee1e9f93e4cb231d4488fada",
+    "target_recall": 0.95
+  }
+}

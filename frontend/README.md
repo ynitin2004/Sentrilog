@@ -6,9 +6,8 @@ tenant/admin console (case dashboard, API keys, webhooks + delivery logs, review
 console. See [`PLAN.md`](../PLAN.md) (Phases 8-10) for the full delivery plan and
 [`STUDY.md`](../STUDY.md) for concept write-ups.
 
-**Phase 8 (current):** every screen is built against a mock data layer — no real backend calls
-yet. Phase 9 wires it to the real intake API (plus new endpoints this console needs). Phase 10
-adds real-time updates via Server-Sent Events.
+**Status:** wired to the real intake API (Phase 9) with real-time updates over Server-Sent Events
+(Phase 10). The API URL is entered at runtime on the `/connect` screen.
 
 ## Stack
 
@@ -38,7 +37,7 @@ src/
   pages/
     reviewer/  # Queue, Case Detail
     admin/     # Overview, Cases, API Keys, Webhooks, Reviewers
-  hooks/       # Data hooks -- mock-backed in Phase 8, real TanStack Query in Phase 9
+  hooks/       # TanStack Query data hooks
   lib/         # Auth session context, utilities
   mocks/       # Fixture data for Phase 8's mock hooks
   types/       # Types mirroring the backend's Pydantic schemas

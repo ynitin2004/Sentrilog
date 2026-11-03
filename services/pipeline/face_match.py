@@ -35,6 +35,11 @@ class InsightFaceClient:
         # deployment target (ECS Fargate has no GPU by default per PLAN.md §5).
         self._app.prepare(ctx_id=-1)
 
+    def embed(self, image_bytes: bytes) -> np.ndarray:
+        """The L2-normalised embedding of the largest face. Public so the evaluation harness can
+        embed each image once and score every pair from the cache (services/eval/face.py)."""
+        return self._embed(image_bytes)
+
     def _embed(self, image_bytes: bytes) -> np.ndarray:
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         # InsightFace/OpenCV expect BGR channel order, not RGB.

@@ -4,7 +4,7 @@ retry and error-feedback prompting. See PLAN.md Phase 4.
 
 from pydantic import ValidationError
 
-from .mrz import parse_td3
+from .mrz import parse_td3_tolerant
 from .schemas import ExtractionResult, IDDocument, VLMExtractionResponse
 from .vlm import VLMClient
 
@@ -12,7 +12,7 @@ from .vlm import VLMClient
 def extract_from_mrz(line1: str, line2: str) -> ExtractionResult | None:
     """High-confidence result if the MRZ is present and checksum-valid; None otherwise, so the
     caller falls back to the VLM path rather than trusting a partially-read MRZ."""
-    result = parse_td3(line1, line2)
+    result = parse_td3_tolerant(line1, line2)
     if not result.valid or result.date_of_birth is None:
         return None
     try:

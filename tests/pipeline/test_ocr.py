@@ -1,10 +1,16 @@
 from services.pipeline.ocr import _assemble_mrz_lines
 
 
-def _box(top_y: float, text: str, confidence: float = 0.9) -> tuple[list[list[float]], str, float]:
-    # EasyOCR bboxes are 4 corner points [top-left, top-right, bottom-right, bottom-left];
-    # only the y-coordinates matter to _assemble_mrz_lines, so the x values here are arbitrary.
-    return ([[0, top_y], [100, top_y], [100, top_y + 20], [0, top_y + 20]], text, confidence)
+def _box(
+    top_y: float, text: str, confidence: float = 0.9, *, left_x: float = 0
+) -> tuple[list[list[float]], str, float]:
+    # EasyOCR bboxes are 4 corner points [top-left, top-right, bottom-right, bottom-left].
+    # y decides rows; x orders the pieces of one row left to right.
+    return (
+        [[left_x, top_y], [left_x + 100, top_y], [left_x + 100, top_y + 20], [left_x, top_y + 20]],
+        text,
+        confidence,
+    )
 
 
 def test_picks_bottom_two_lines_ordered_top_to_bottom() -> None:
@@ -56,3 +62,21 @@ def test_fewer_than_two_plausible_lines_returns_none() -> None:
 
 def test_no_detections_returns_none() -> None:
     assert _assemble_mrz_lines([]) is None
+
+
+def test_merges_a_line_ocr_split_into_pieces_on_one_row() -> None:
+    """EasyOCR splits a line at long '<' runs, and returns the pieces in no particular order.
+    Observed on rendered data pages by the Phase 13 harness, where it defeated every page."""
+    results = [
+        _box(700, "<<<<<<", left_x=600),
+        _box(702, "P<INDRAHMAN<<ELIF<<<<<<<", left_x=100),
+        _box(771, "RKRMJEPVB0IND6608305M3404241<3", left_x=100),
+        _box(774, "<<<<8", left_x=700),
+    ]
+    result = _assemble_mrz_lines(results)
+    assert result == (
+        "P<INDRAHMAN<<ELIF<<<<<<<<<<<<<".ljust(44, "<"),
+        # The short line's longest filler run is widened, so the final check digit lands back
+        # in position 44 rather than being stranded mid-line by end padding.
+        "RKRMJEPVB0IND6608305M3404241<3<<<<<<<<<<<<<8",
+    )
