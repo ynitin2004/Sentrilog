@@ -14,9 +14,10 @@ from collections.abc import Iterator
 import pytest
 
 from services.screening.config import settings
+from services.screening.names import normalize_name
 from services.screening.phonetic import phonetic_codes
 from services.screening.qdrant_store import drop_collection, ensure_collection, upsert_entry
-from services.screening.screen import screen_name
+from services.screening.screen import ScreeningConfig, screen_name
 
 _DIM = settings.embedding_dimensions
 
@@ -28,8 +29,11 @@ def _unit_vector(index: int) -> list[float]:
 
 
 class FakeEmbeddingClient:
+    """Keyed by the name as a test writes it; screen_name() embeds the normalised form, so the
+    keys are normalised the same way on the way in."""
+
     def __init__(self, vectors: dict[str, list[float]]) -> None:
-        self._vectors = vectors
+        self._vectors = {normalize_name(k): v for k, v in vectors.items()}
 
     def embed(self, text: str) -> list[float]:
         return self._vectors[text]
@@ -97,7 +101,9 @@ def test_phonetic_match_surfaces_a_hit_vector_search_alone_would_miss(
     # Orthogonal vector (would score 0.0, well below threshold) but "Muhammad" shares
     # Mohammed's phonetic code -- must still be caught.
     client = FakeEmbeddingClient({"Muhammad": _unit_vector(1)})
-    hits = screen_name(client, "Muhammad", collection_name=test_collection)
+    # The phonetic leg ships off (D31); this test is about the leg itself, so it turns it on.
+    config = ScreeningConfig(settings.sanctions_vector_threshold, use_phonetic=True)
+    hits = screen_name(client, "Muhammad", collection_name=test_collection, config=config)
 
     assert len(hits) == 1
     assert hits[0].method == "phonetic"

@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     # Only for the type hint on the module-level cache below -- the real import is deferred to
     # inside sanctions_screen_activity (see the comment there for why).
     from ...screening.embeddings import EmbeddingClient
+    from ...screening.rerank import Reranker
 
 
 @dataclass
@@ -142,6 +143,7 @@ _WEBHOOK_RETRY_BACKOFF_SECONDS = 1.0
 _vlm_client: VLMClient | None = None
 _face_match_client: FaceMatchClient | None = None
 _embedding_client: "EmbeddingClient | None" = None
+_reranker: "Reranker | None" = None
 
 
 def _get_vlm_client() -> VLMClient:
@@ -285,40 +287,57 @@ async def face_match_activity(input: FaceMatchInput) -> FaceMatchOutput:
 async def sanctions_screen_activity(input: SanctionsScreenInput) -> SanctionsScreenOutput:
     async with audit.audited(input.tenant_id, input.case_id, "sanctions_screen") as a:
         # Imported here, not at module level: screening has its own config.py (separate
-        # GEMINI_EMBEDDING_MODEL/QDRANT_* settings) -- keeping the import local avoids pulling
+        # embedding/QDRANT_* settings) -- keeping the import local avoids pulling
         # services.screening's settings validation into every activity module import, only this
         # one.
         from ...screening.config import settings as screening_settings
-        from ...screening.embeddings import EmbeddingClient, GeminiEmbeddingClient
-        from ...screening.screen import screen_name
+        from ...screening.embeddings import build_embedding_client, embedding_model_version
+        from ...screening.rerank import CrossEncoderReranker
+        from ...screening.screen import ScreeningConfig, screen_name
+        from ...screening.snapshots import active_list_version
 
-        global _embedding_client
+        global _embedding_client, _reranker
         if _embedding_client is None:
-            _embedding_client = GeminiEmbeddingClient(
-                api_key=screening_settings.gemini_api_key.get_secret_value(),
-                model=screening_settings.gemini_embedding_model,
-                dimensions=screening_settings.embedding_dimensions,
+            _embedding_client = build_embedding_client(screening_settings)
+        config = ScreeningConfig.from_settings()
+        if config.rerank_threshold is not None and _reranker is None:
+            _reranker = CrossEncoderReranker(
+                screening_settings.reranker_model, cache_dir=screening_settings.model_cache_dir
             )
-        client: EmbeddingClient = _embedding_client
-        a.model_version = screening_settings.gemini_embedding_model
+        a.model_version = embedding_model_version(screening_settings)
 
-        hits = await asyncio.to_thread(screen_name, client, input.full_name)
+        hits = await asyncio.to_thread(
+            screen_name, _embedding_client, input.full_name, reranker=_reranker, config=config
+        )
 
         async with db.tenant_connection(input.tenant_id) as conn:
+            # Read once per screen, not taken from the hits: a screen with no hits must still
+            # say which list it ran against, or "was this person clear on that date?" cannot
+            # be answered for exactly the cases that matter most.
+            list_version = await active_list_version(conn)
             for hit in hits:
                 await conn.execute(
                     "INSERT INTO sanctions_hits (tenant_id, case_id, list_source, matched_name, "
-                    "match_score, method) VALUES ($1, $2, $3, $4, $5, $6)",
+                    "match_score, method, list_version, entity_id) "
+                    "VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
                     input.tenant_id,
                     input.case_id,
                     hit.list_source,
                     hit.matched_name,
                     hit.match_score,
                     hit.method,
+                    hit.list_version or list_version,
+                    hit.entity_id,
                 )
 
         highest = max((h.match_score for h in hits), default=None)
-        a.payload = {"hit_count": len(hits), "highest_score": highest}
+        a.payload = {
+            "hit_count": len(hits),
+            "highest_score": highest,
+            "list_version": list_version,
+            "vector_threshold": config.vector_threshold,
+            "rerank_threshold": config.rerank_threshold,
+        }
         return SanctionsScreenOutput(hit_count=len(hits), highest_score=highest)
 
 
