@@ -114,3 +114,61 @@ def test_unused_personal_number_with_literal_filler_check_is_valid() -> None:
     line1, line2 = _build_td3()
     result = parse_td3(line1, line2)
     assert "personal_number" not in result.failed_checks
+
+
+def test_tolerant_reading_fixes_digit_letter_confusions_by_position() -> None:
+    from services.pipeline.extraction.mrz import parse_td3_tolerant
+
+    line1, line2 = _build_td3(surname="SOSA", given_names="BOB")
+    # OCR-style misreads: letters in the name read as digits, the nationality with a digit in
+    # it, and digits in the date of birth read as letters.
+    bad1 = line1.replace("SOSA", "505A").replace("BOB", "8O8")
+    bad2 = line2[:10] + "U5A" + line2[13:].replace("800101", "8OO1O1", 1)
+    assert parse_td3(bad1, bad2).valid is False
+    result = parse_td3_tolerant(bad1, bad2)
+    assert result.valid, result.failed_checks
+    assert (result.full_name, result.nationality) == ("BOB SOSA", "USA")
+    assert result.date_of_birth == parse_td3(line1, line2).date_of_birth
+
+
+def test_tolerant_reading_never_guesses_inside_the_document_number() -> None:
+    """The composite check digit weights the document number exactly as its own check does,
+    so a compensating misread there passes both. A failed document-number check must fall
+    through to the VLM rather than be searched for a passing reading."""
+    from services.pipeline.extraction.mrz import parse_td3_tolerant
+
+    line1, line2 = _build_td3(document_number="T54JTZR84")
+    bad2 = "TS4JTZR84" + line2[9:]  # the 5 read as S, inside the mixed-character field
+    assert parse_td3_tolerant(line1, bad2).valid is False
+
+
+def test_noise_in_the_name_filler_is_not_part_of_the_name() -> None:
+    line1, line2 = _build_td3(surname="OCONNOR", given_names="GIULIA HANS")
+    noisy = line1[:30] + "S" + line1[31:]  # inside the trailing filler
+    assert noisy != line1
+    assert parse_td3(noisy, line2).full_name == "GIULIA HANS OCONNOR"
+
+
+def test_a_row_that_is_not_a_td3_line_1_is_rejected() -> None:
+    _, line2 = _build_td3()
+    header = "PASSPORTSPECIMENSYNTHETICTESTDOCUMENT".ljust(44, "<")
+    result = parse_td3(header, line2)
+    assert result.valid is False
+    assert "line1_format" in result.failed_checks
+
+
+def test_tolerant_reading_restores_a_filler_run_ocr_compressed() -> None:
+    from services.pipeline.extraction.mrz import parse_td3_tolerant
+
+    line1, line2 = _build_td3()
+    compressed = line2[:28] + "<" * 5 + line2[42:]  # 14-char filler read as 5
+    assert parse_td3(line1, compressed.ljust(44, "<")).valid is False
+    assert parse_td3_tolerant(line1, compressed).valid
+
+
+def test_tolerant_reading_cannot_make_a_wrong_digit_pass() -> None:
+    from services.pipeline.extraction.mrz import parse_td3_tolerant
+
+    line1, line2 = _build_td3()
+    wrong = line2[:13] + "9" + line2[14:]  # a real digit misread as another real digit
+    assert parse_td3_tolerant(line1, wrong).valid is False
