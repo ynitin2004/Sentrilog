@@ -15,6 +15,7 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from temporalio.service import RPCError, RPCStatusCode
 
 from services.common.observability import configure_logging, configure_tracing
+from services.common.policy import BUILT_IN_POLICY, BUILT_IN_VERSION, RiskPolicy
 from services.pipeline.workflows.contracts import (
     SUBMIT_REVIEW_DECISION_SIGNAL_NAME,
     ReviewDecisionSignal,
@@ -52,6 +53,7 @@ from .schemas import (
     ReviewerCreateResponse,
     ReviewerResponse,
     ReviewQueueCase,
+    RiskPolicyResponse,
     SanctionsHitDetail,
     UploadTarget,
     WebhookCreateRequest,
@@ -123,6 +125,14 @@ def _check_rate_limit_key(key: str) -> None:
         )
 
 
+# The tenant's newest policy version, or 0 (built-in) when it has none -- evaluated inside the
+# INSERT, in the same transaction, so a case can never be created under a version that was not
+# yet committed. Fixed here, at creation, and never re-read from risk_policies afterwards.
+_CURRENT_POLICY_VERSION = (
+    "(SELECT COALESCE(MAX(version), 0) FROM risk_policies WHERE tenant_id = $1)"
+)
+
+
 @app.post("/cases", response_model=CaseCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_case(
     payload: CaseCreateRequest,
@@ -143,8 +153,8 @@ async def create_case(
         is_replay = False
         if idempotency_key:
             case_row = await conn.fetchrow(
-                "INSERT INTO cases (tenant_id, subject_name, subject_dob, idempotency_key) "
-                "VALUES ($1, $2, $3, $4) "
+                "INSERT INTO cases (tenant_id, subject_name, subject_dob, idempotency_key, "
+                f"policy_version) VALUES ($1, $2, $3, $4, {_CURRENT_POLICY_VERSION}) "
                 "ON CONFLICT (tenant_id, idempotency_key) DO NOTHING "
                 "RETURNING id, status",
                 auth.tenant_id,
@@ -161,8 +171,8 @@ async def create_case(
                 )
         else:
             case_row = await conn.fetchrow(
-                "INSERT INTO cases (tenant_id, subject_name, subject_dob) "
-                "VALUES ($1, $2, $3) RETURNING id, status",
+                "INSERT INTO cases (tenant_id, subject_name, subject_dob, policy_version) "
+                f"VALUES ($1, $2, $3, {_CURRENT_POLICY_VERSION}) RETURNING id, status",
                 auth.tenant_id,
                 payload.subject_name,
                 payload.subject_dob,
@@ -852,6 +862,79 @@ async def list_webhook_deliveries(
         )
         for row in rows
     ]
+
+
+# --- Risk policy (Phase 13b) ----------------------------------------------------------
+
+
+def _policy_response(row: asyncpg.Record | None) -> RiskPolicyResponse:
+    if row is None:
+        return RiskPolicyResponse(
+            version=BUILT_IN_VERSION, policy=BUILT_IN_POLICY, created_at=None, created_by=None
+        )
+    return RiskPolicyResponse(
+        version=row["version"],
+        policy=RiskPolicy.model_validate_json(row["document"]),
+        created_at=row["created_at"],
+        created_by=row["created_by"],
+    )
+
+
+@app.get("/policy", response_model=RiskPolicyResponse)
+async def get_risk_policy(auth: AuthContext = Depends(require_api_key)) -> RiskPolicyResponse:
+    """The policy new cases are created under."""
+    _check_rate_limit(auth)
+    async with db.tenant_connection(auth.tenant_id) as conn:
+        row = await conn.fetchrow(
+            "SELECT version, document::text AS document, created_at, created_by "
+            "FROM risk_policies WHERE tenant_id = $1 ORDER BY version DESC LIMIT 1",
+            auth.tenant_id,
+        )
+    return _policy_response(row)
+
+
+@app.get("/policy/versions", response_model=list[RiskPolicyResponse])
+async def list_risk_policy_versions(
+    auth: AuthContext = Depends(require_api_key),
+) -> list[RiskPolicyResponse]:
+    """Every version, newest first, ending with the built-in version 0 -- the full history a
+    past case's policy_version can point at."""
+    _check_rate_limit(auth)
+    async with db.tenant_connection(auth.tenant_id) as conn:
+        rows = await conn.fetch(
+            "SELECT version, document::text AS document, created_at, created_by "
+            "FROM risk_policies WHERE tenant_id = $1 ORDER BY version DESC",
+            auth.tenant_id,
+        )
+    return [_policy_response(r) for r in rows] + [_policy_response(None)]
+
+
+@app.put("/policy", response_model=RiskPolicyResponse, status_code=status.HTTP_201_CREATED)
+async def put_risk_policy(
+    payload: RiskPolicy, auth: AuthContext = Depends(require_api_key)
+) -> RiskPolicyResponse:
+    """Creates the next version. Never edits one: cases already created keep the version they
+    were created under, and only cases created after this commits use the new one."""
+    _check_rate_limit(auth)
+    async with db.tenant_connection(auth.tenant_id) as conn:
+        try:
+            row = await conn.fetchrow(
+                "INSERT INTO risk_policies (tenant_id, version, document, created_by) "
+                "SELECT $1, COALESCE(MAX(version), 0) + 1, $2::jsonb, $3 "
+                "FROM risk_policies WHERE tenant_id = $1 "
+                "RETURNING version, document::text AS document, created_at, created_by",
+                auth.tenant_id,
+                payload.model_dump_json(),
+                f"api_key:{auth.api_key_id}",
+            )
+        except asyncpg.UniqueViolationError:
+            # Two concurrent writers computed the same next version; the loser retries rather
+            # than silently overwriting, since neither may edit what the other wrote.
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="another policy version was written concurrently; retry",
+            ) from None
+    return _policy_response(row)
 
 
 # --- Dashboard --------------------------------------------------------------------------

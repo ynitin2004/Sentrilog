@@ -249,6 +249,52 @@ export interface paths {
     patch?: never
     trace?: never
   }
+  '/policy': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * Get Risk Policy
+     * @description The policy new cases are created under.
+     */
+    get: operations['get_risk_policy_policy_get']
+    /**
+     * Put Risk Policy
+     * @description Creates the next version. Never edits one: cases already created keep the version they
+     *     were created under, and only cases created after this commits use the new one.
+     */
+    put: operations['put_risk_policy_policy_put']
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/policy/versions': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /**
+     * List Risk Policy Versions
+     * @description Every version, newest first, ending with the built-in version 0 -- the full history a
+     *     past case's policy_version can point at.
+     */
+    get: operations['list_risk_policy_versions_policy_versions_get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
   '/dashboard/summary': {
     parameters: {
       query?: never
@@ -258,6 +304,23 @@ export interface paths {
     }
     /** Get Dashboard Summary */
     get: operations['get_dashboard_summary_dashboard_summary_get']
+    put?: never
+    post?: never
+    delete?: never
+    options?: never
+    head?: never
+    patch?: never
+    trace?: never
+  }
+  '/events/stream': {
+    parameters: {
+      query?: never
+      header?: never
+      path?: never
+      cookie?: never
+    }
+    /** Stream Case Events */
+    get: operations['stream_case_events_events_stream_get']
     put?: never
     post?: never
     delete?: never
@@ -304,6 +367,15 @@ export interface components {
       created_at: string
       /** Revoked At */
       revoked_at: string | null
+    }
+    /** AutoClear */
+    AutoClear: {
+      /** Min Combined */
+      min_combined: number
+      /** Face Match Weight */
+      face_match_weight: number
+      /** Extraction Weight */
+      extraction_weight: number
     }
     /** CaseCreateRequest */
     CaseCreateRequest: {
@@ -383,6 +455,16 @@ export interface components {
       cases_last_30_days: components['schemas']['DashboardCaseVolumePoint'][]
       /** Recent Activity */
       recent_activity: components['schemas']['DashboardActivityItem'][]
+    }
+    /** DocumentRules */
+    DocumentRules: {
+      /**
+       * Review Expired
+       * @default true
+       */
+      review_expired: boolean
+      /** Expiring Within Days */
+      expiring_within_days?: number | null
     }
     /** DocumentUpload */
     DocumentUpload: {
@@ -552,6 +634,34 @@ export interface components {
       created_at: string
       /** Revoked At */
       revoked_at: string | null
+    }
+    /** RiskPolicy */
+    RiskPolicy: {
+      auto_clear: components['schemas']['AutoClear']
+      /**
+       * @default {
+       *       "review_expired": true
+       *     }
+       */
+      document_rules: components['schemas']['DocumentRules']
+      /** Min Face Match */
+      min_face_match?: number | null
+      /** Review Nationalities */
+      review_nationalities?: string[]
+    }
+    /**
+     * RiskPolicyResponse
+     * @description version 0 is the built-in policy, returned when the tenant has never written one; it has
+     *     no created_at or created_by because nobody created it.
+     */
+    RiskPolicyResponse: {
+      /** Version */
+      version: number
+      policy: components['schemas']['RiskPolicy']
+      /** Created At */
+      created_at: string | null
+      /** Created By */
+      created_by: string | null
     }
     /** SanctionsHitDetail */
     SanctionsHitDetail: {
@@ -1219,6 +1329,103 @@ export interface operations {
       }
     }
   }
+  get_risk_policy_policy_get: {
+    parameters: {
+      query?: never
+      header?: {
+        authorization?: string | null
+      }
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RiskPolicyResponse']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  put_risk_policy_policy_put: {
+    parameters: {
+      query?: never
+      header?: {
+        authorization?: string | null
+      }
+      path?: never
+      cookie?: never
+    }
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['RiskPolicy']
+      }
+    }
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RiskPolicyResponse']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  list_risk_policy_versions_policy_versions_get: {
+    parameters: {
+      query?: never
+      header?: {
+        authorization?: string | null
+      }
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['RiskPolicyResponse'][]
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
   get_dashboard_summary_dashboard_summary_get: {
     parameters: {
       query?: never
@@ -1237,6 +1444,37 @@ export interface operations {
         }
         content: {
           'application/json': components['schemas']['DashboardSummaryResponse']
+        }
+      }
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': components['schemas']['HTTPValidationError']
+        }
+      }
+    }
+  }
+  stream_case_events_events_stream_get: {
+    parameters: {
+      query?: never
+      header?: {
+        authorization?: string | null
+      }
+      path?: never
+      cookie?: never
+    }
+    requestBody?: never
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown
+        }
+        content: {
+          'application/json': unknown
         }
       }
       /** @description Validation Error */

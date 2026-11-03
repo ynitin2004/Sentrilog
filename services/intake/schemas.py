@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, field_validator
 
+from services.common.policy import RiskPolicy
+
 # Matches the cases.status / cases.decision CHECK constraints exactly (001_schema.sql) --
 # declared as a real Literal, not `str`, so the generated OpenAPI schema (and therefore the
 # frontend's generated TS types, via `npm run generate-types`) carries the narrow union instead
@@ -199,3 +201,13 @@ class DashboardSummaryResponse(BaseModel):
     status_counts: dict[str, int]
     cases_last_30_days: list[DashboardCaseVolumePoint]
     recent_activity: list[DashboardActivityItem]
+
+
+class RiskPolicyResponse(BaseModel):
+    """version 0 is the built-in policy, returned when the tenant has never written one; it has
+    no created_at or created_by because nobody created it."""
+
+    version: int
+    policy: RiskPolicy
+    created_at: datetime | None
+    created_by: str | None
