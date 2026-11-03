@@ -15,18 +15,20 @@ class Settings(ServiceSettings):
     # (services/screening/snapshots.py). Was the collection "sanctions_entries" before Phase 13.
     qdrant_collection: str = "sanctions_current"
 
-    embedding_provider: Literal["fastembed", "ngram", "gemini"] = "fastembed"
+    embedding_provider: Literal["fastembed", "ngram", "gemini"] = "ngram"
     fastembed_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     gemini_embedding_model: str = "gemini-embedding-001"
-    # Must match the active model: 384 for the fastembed default. Gemini accepts any size via
-    # output_dimensionality, so the same value serves both providers.
-    embedding_dimensions: int = 384
+    # The n-gram vector size the harness measured (D30). Must match the model for "fastembed"
+    # (384 for the small models); Gemini accepts any size via output_dimensionality.
+    embedding_dimensions: int = 1024
     # Where fastembed keeps downloaded ONNX models. None means fastembed's own temp-dir default.
     model_cache_dir: str | None = None
 
-    # To be chosen by the evaluation harness (services/eval/screening.py). Until it has run, this
-    # is the pre-Phase 13 value, which was set for Gemini embeddings with nothing behind it.
-    sanctions_vector_threshold: float = 0.55
+    # Chosen by the evaluation harness, not by hand (D30, D39): 95.67% recall and 13.45%
+    # false-positive rate on screening-queries-v1 against the 2026-11-03 OFAC snapshot. Recorded
+    # in services/eval/results/screening.json; tests/eval/test_shipped_config.py fails if these
+    # defaults and that file disagree. Was 0.55, for Gemini embeddings, with nothing behind it.
+    sanctions_vector_threshold: float = 0.73
     # How many nearest list entries vector search considers before the threshold (and the
     # reranker, if enabled) decides which of them are hits.
     vector_candidates: int = 20
@@ -36,7 +38,7 @@ class Settings(ServiceSettings):
 
     # Double Metaphone lookup alongside vector search (D10). A setting rather than a constant
     # because the harness measures the pair both ways.
-    phonetic_enabled: bool = True
+    phonetic_enabled: bool = False  # off at the shipped threshold, by measurement (D31)
 
     reranker_enabled: bool = False
     reranker_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"

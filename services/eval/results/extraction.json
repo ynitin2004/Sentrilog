@@ -1,0 +1,50 @@
+{
+  "dataset": "synthetic-td3-v1",
+  "dataset_sha256": "3fd17369a135b6186f7d5a816c8ec52e2725cb64b73d5959c95b6b04c6b6d7a7",
+  "generated_on": "2026-11-03",
+  "paths": [
+    {
+      "accepted": 284,
+      "f1": 0.9809859154929578,
+      "notes": {
+        "confusions": "O0I1S5B8<",
+        "corruption_rate": 0.02
+      },
+      "path": "mrz-parse",
+      "per_field_f1": {
+        "date_of_birth": 1.0,
+        "document_number": 1.0,
+        "expiry_date": 1.0,
+        "full_name": 0.9154929577464789,
+        "nationality": 0.9894366197183099
+      },
+      "precision": 0.9809859154929578,
+      "recall": 0.9809859154929578,
+      "routed_to_fallback": 16,
+      "samples": 300,
+      "status": "ran",
+      "wrong_but_accepted": 27
+    },
+    {
+      "accepted": 24,
+      "f1": 0.9500000000000001,
+      "notes": {
+        "font": "C:/Windows/Fonts/consola.ttf"
+      },
+      "path": "mrz-ocr",
+      "per_field_f1": {
+        "date_of_birth": 1.0,
+        "document_number": 0.75,
+        "expiry_date": 1.0,
+        "full_name": 1.0,
+        "nationality": 1.0
+      },
+      "precision": 0.95,
+      "recall": 0.95,
+      "routed_to_fallback": 76,
+      "samples": 100,
+      "status": "ran",
+      "wrong_but_accepted": 6
+    }
+  ]
+}
