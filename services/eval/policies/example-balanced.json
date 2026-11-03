@@ -1,0 +1,6 @@
+{
+  "auto_clear": {"min_combined": 0.6, "face_match_weight": 0.6, "extraction_weight": 0.4},
+  "document_rules": {"review_expired": true, "expiring_within_days": 30},
+  "min_face_match": 0.35,
+  "review_nationalities": []
+}

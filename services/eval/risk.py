@@ -26,7 +26,8 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from services.pipeline.risk_scoring import RiskInputs, assess_risk
+from services.common.policy import RiskPolicy
+from services.pipeline.risk_scoring import RiskInputs, assess_risk, evaluate_policy
 
 MRZ_CONFIDENCE = 0.99
 
@@ -43,6 +44,12 @@ Decider = Callable[[RiskInputs], bool]  # True when the case is auto-cleared
 
 def production_decider(inputs: RiskInputs) -> bool:
     return not assess_risk(inputs).needs_review
+
+
+def policy_decider(policy: RiskPolicy) -> Decider:
+    """The same evaluator the risk activity runs, under a candidate tenant policy -- so a policy
+    can be measured before anyone adopts it."""
+    return lambda inputs: not evaluate_policy(policy, inputs).needs_review
 
 
 @dataclass
@@ -82,7 +89,7 @@ def evaluate(
     screening_recall: float,
     screening_fpr: float,
     decide: Decider = production_decider,
-    policy: str = "built-in constants (services/pipeline/risk_scoring.py)",
+    policy: str = "built-in, version 0 (services/common/policy.py)",
 ) -> RiskResult:
     rates = {
         "genuine_clear": _auto_clear_rate(genuine_scores, 1 - screening_fpr, decide),

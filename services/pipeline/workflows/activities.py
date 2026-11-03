@@ -1,4 +1,5 @@
 import asyncio
+import datetime as dt
 import hashlib
 import hmac
 import json
@@ -9,14 +10,18 @@ import httpx
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
+from services.common.policy import BUILT_IN_POLICY, BUILT_IN_VERSION, RiskPolicy
+
 from .. import audit, db, ocr, storage
 from ..config import settings
 from ..extraction.extract import extract_id_document
 from ..extraction.vlm import GeminiVLMClient, VLMClient
 from ..face_match import FaceMatchClient, InsightFaceClient, NoFaceDetectedError
-from ..risk_scoring import RiskInputs, assess_risk
+from ..risk_scoring import RiskInputs, evaluate_policy
 
 if TYPE_CHECKING:
+    import asyncpg
+
     # Only for the type hint on the module-level cache below -- the real import is deferred to
     # inside sanctions_screen_activity (see the comment there for why).
     from ...screening.embeddings import EmbeddingClient
@@ -370,15 +375,58 @@ async def update_case_status_activity(input: UpdateCaseStatusInput) -> None:
         a.payload = {"status": input.status}
 
 
+async def _load_policy(conn: "asyncpg.Connection", case_id: str) -> tuple[int, RiskPolicy]:
+    """The policy version fixed on the case at creation, and that version's document."""
+    version: int = await conn.fetchval("SELECT policy_version FROM cases WHERE id = $1", case_id)
+    if version == BUILT_IN_VERSION:
+        return version, BUILT_IN_POLICY
+    document = await conn.fetchval(
+        "SELECT document::text FROM risk_policies WHERE version = $1", version
+    )
+    if document is None:
+        # risk_policies is insert-only, so a version a case points at cannot disappear. If it
+        # somehow has, failing loudly beats deciding the case under a policy it was not
+        # created under.
+        raise ApplicationError(
+            f"case {case_id} names policy version {version}, which does not exist",
+            non_retryable=True,
+        )
+    return version, RiskPolicy.model_validate_json(document)
+
+
+async def _load_document_facts(
+    conn: "asyncpg.Connection", case_id: str
+) -> tuple[dt.date | None, str | None]:
+    raw = await conn.fetchval(
+        "SELECT raw_json::text FROM extractions WHERE case_id = $1 AND valid "
+        "ORDER BY created_at DESC LIMIT 1",
+        case_id,
+    )
+    if not raw:
+        return None, None
+    facts = json.loads(raw)
+    expiry = facts.get("expiry_date")
+    return (dt.date.fromisoformat(expiry) if expiry else None), facts.get("nationality")
+
+
 @activity.defn
 async def risk_score_activity(input: RiskScoreInput) -> RiskScoreOutput:
     async with audit.audited(input.tenant_id, input.case_id, "risk_score") as a:
-        assessment = assess_risk(
+        # Everything the policy needs beyond the three scores is read here rather than passed
+        # in by the workflow, so adding policies changed no workflow code and no event history
+        # (STUDY.md, Phase 13: a changed command sequence breaks replay of in-flight cases).
+        async with db.tenant_connection(input.tenant_id) as conn:
+            policy_version, policy = await _load_policy(conn, input.case_id)
+            expiry_date, nationality = await _load_document_facts(conn, input.case_id)
+        assessment = evaluate_policy(
+            policy,
             RiskInputs(
                 extraction_confidence=input.extraction_confidence,
                 face_match_score=input.face_match_score,
                 sanctions_hit_count=input.sanctions_hit_count,
-            )
+                expiry_date=expiry_date,
+                nationality=nationality,
+            ),
         )
         async with db.tenant_connection(input.tenant_id) as conn:
             await conn.execute(
@@ -386,10 +434,13 @@ async def risk_score_activity(input: RiskScoreInput) -> RiskScoreOutput:
                 assessment.risk_score,
                 input.case_id,
             )
+        # policy_version inside the payload puts it under the row hash, so it is as
+        # tamper-evident as the decision it explains (STUDY.md, Phase 13).
         a.payload = {
             "risk_score": assessment.risk_score,
             "needs_review": assessment.needs_review,
             "reason": assessment.reason,
+            "policy_version": policy_version,
         }
         return RiskScoreOutput(
             risk_score=assessment.risk_score,

@@ -1,0 +1,25 @@
+{
+  "auto_clear_precision": 0.9994676516476181,
+  "auto_clear_rate_by_kind": {
+    "genuine_clear": 0.16963799999999998,
+    "genuine_listed": 0.008493333333333334,
+    "impostor_clear": 0.0
+  },
+  "caveat": "Composed from component measurements at stated priors, not observed on real cases; MRZ-path cases only.",
+  "inputs": {
+    "extraction_confidence": 0.99,
+    "face_genuine_pairs": 500,
+    "face_impostor_pairs": 500,
+    "screening_false_positive_rate": 0.1345,
+    "screening_recall": 0.9566666666666667
+  },
+  "leak_rate_impostor": 0.0,
+  "leak_rate_listed": 0.008493333333333334,
+  "policy": "built-in, version 0 (services/common/policy.py)",
+  "priors": {
+    "genuine_clear": 0.94,
+    "genuine_listed": 0.01,
+    "impostor_clear": 0.05
+  },
+  "review_burden": 0.8404553466666667
+}

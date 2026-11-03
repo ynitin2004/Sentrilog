@@ -91,6 +91,7 @@ async def _delete_tenant(tenant_id: str) -> None:
             await conn.execute("DELETE FROM reviewers WHERE tenant_id = $1", tenant_id)
             await conn.execute("DELETE FROM webhooks WHERE tenant_id = $1", tenant_id)
             await conn.execute("DELETE FROM api_keys WHERE tenant_id = $1", tenant_id)
+            await conn.execute("DELETE FROM risk_policies WHERE tenant_id = $1", tenant_id)
             await conn.execute("DELETE FROM tenants WHERE id = $1", tenant_id)
     finally:
         await conn.close()
