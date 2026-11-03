@@ -5,7 +5,8 @@ through the Quiz Rule in `CLAUDE.md`. Each entry gives the decision, the reason,
 
 - **Part 1 (D1–D19):** decisions already in the code, gathered from the [PLAN.md](../PLAN.md) changelog.
 - **Part 2 (D20–D25):** the $0 deployment, accepted as a plan and not built.
-- **Part 3 (R1–R20):** the proposed roadmap. Full reasoning is in [improvements.md](../improvements.md) §5–§10.
+- **Part 3 (D26–D29):** Phase 13 choices.
+- **Part 4 (R1–R20):** the proposed roadmap. Full reasoning is in [improvements.md](../improvements.md) §5–§10.
 
 ## Part 1: In the code
 
@@ -124,7 +125,35 @@ host at runtime. The cost is a larger image. **Revisit:** image size blocks the 
 One run of the real path proves more than a port check, leaves a trace, and adds activity on the VM. Costs one
 Gemini embedding per run, more if the document takes the VLM path. **Revisit:** free-tier limits are hit.
 
-## Part 3: Proposed roadmap
+## Part 3: Phase 13 (agreed 2026-11-03)
+
+### D26 — Local ONNX embeddings and reranker via `fastembed`, not Gemini or `sentence-transformers`
+The real OFAC list is about 40,000 names (19,484 SDN rows plus 20,204 aliases, downloaded 2026-11-03). Embedding
+them through Gemini's free tier hits rate limits on every ingest and every evaluation run, and makes runs
+unrepeatable. `sentence-transformers` needs torch, which Application Control blocks on the dev host.
+`fastembed` runs ONNX models on the `onnxruntime` already in the lockfile; a probe on this host loaded
+`paraphrase-multilingual-MiniLM-L12-v2` (384 dimensions) and `ms-marco-MiniLM-L-6-v2` and ran both. Gemini stays
+available behind `EmbeddingClient`. **Revisit:** the harness shows a hosted model beats the local one by more than
+its cost, or R6 (Bedrock) is built.
+
+### D27 — OFAC SDN only for Phase 13; OpenSanctions waits for Phase 15
+OFAC data is US-government public domain. OpenSanctions is free only for non-commercial use, and its PEP data
+belongs with the PEP screening work in Phase 15. **Revisit:** Phase 15 starts, or a licence is bought.
+
+### D28 — Generated and pinned datasets, not MIDV in CI
+Synthetic ID documents with known ground truth, name pairs built from OFAC aliases with hard near-miss
+negatives, and a small public face-pair set fetched by script and pinned by hash. MIDV-500/2020 is several GB
+with research-only terms. Every metric names the dataset and its hash, so no number is read as more than it is.
+**Revisit:** a design partner supplies labelled real data, or the synthetic F1 is suspected of flattering the
+extractor.
+
+### D29 — Phase 13 ships as 13a, 13b and 13c
+13a: harness, real OFAC list, reranker, threshold chosen by the harness. 13b: per-tenant policy and
+`policy_version` in the audit chain. 13c: frontend CI and the first Playwright flow. Each has its own branch,
+at least 4 commits, a changelog entry and a tag. 13a goes first because 13b's policy is tuned against it.
+**Revisit:** never; this is sequencing.
+
+## Part 4: Proposed roadmap
 
 Proposed in [improvements.md](../improvements.md) §10, where these are numbered D-1…D-20. None are implemented
 except where the first column says "keep".

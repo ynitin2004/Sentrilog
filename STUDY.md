@@ -352,6 +352,110 @@ The general shape is worth remembering beyond mypy: when a build fails at step N
 
 **Read more:** <https://distribution.github.io/distribution/spec/auth/token/>
 
+## Phase 13 concepts
+
+These began as the five Quiz Rule questions asked before Phase 13 started (2026-11-03). Each answer is written
+against the code as it stands, so it says where the real answer is more subtle than the question implied.
+
+### A similarity threshold trades recall for false positives, and the cost of each is not equal
+
+**What:** A vector search returns candidates whose similarity is at or above a threshold. Raising it, say from
+0.55 to 0.70, lets fewer candidates through. That means fewer false positives, so fewer clean customers sent to a
+reviewer, and lower recall, so more real matches missed. You cannot improve one by moving the threshold without
+worsening the other. Only a better model or a second stage changes the trade.
+
+**Why here:** In KYC the two errors do not cost the same. A false positive costs a reviewer a few minutes. A
+missed sanctioned person is a legal violation. So the threshold is chosen for a target recall on the evaluation
+set, and the false-positive rate at that point is reported as its price, which is what the Phase 13 exit
+criterion asks PLAN.md to record. Two more points:
+
+- **A threshold belongs to a model.** `0.55` in `services/screening/config.py` was set for Gemini embeddings.
+  With the local `paraphrase-multilingual-MiniLM-L12-v2` model, unrelated names already score 0.34–0.46 (measured
+  2026-11-03), so carrying 0.55 over unchanged would mean something different. A new model needs a new
+  threshold.
+- **A reranker changes the trade.** Retrieve wide with a low vector threshold to protect recall, then let a
+  cross-encoder, which reads both names together, sort out precision. That is why the reranker and the threshold
+  are chosen together.
+
+**Read more:** <https://developers.google.com/machine-learning/crash-course/classification/precision-and-recall>
+
+### A field is only tamper-evident if it is inside the hash
+
+**What:** `services/common/audit_hash.py` hashes a fixed list of fields: tenant, case, event type, actor, model
+version, input hash, `payload_json`, timestamp and the previous row's hash. Anything inside one of those is
+covered by the chain. A new column beside them is not: someone with database access could change it, and
+`scripts/verify_audit_chain.py` would still report the chain as intact.
+
+**Why here:** `policy_version` records which rules decided a case, which is exactly what an auditor will ask about.
+Putting it in `payload_json` puts it under the hash with no change to the formula. Adding it as a hashed field
+instead would change the formula for every row, and the verifier would then need to know which formula each row
+was written under.
+
+**What happens to old rows:** nothing. The verifier recomputes each row's hash from what that row stored. Rows
+written before the change have no `policy_version` in their payload, and their hashes still match. They read as
+"before per-tenant policy", meaning the three constants in `risk_scoring.py`. They must **not** be backfilled:
+editing an old payload is precisely the change the chain exists to expose, and the verifier would report it as
+tampering.
+
+**Read more:** <https://datatracker.ietf.org/doc/html/rfc6962#section-2.1>
+
+### Temporal replays workflow code, not activity code, and in-flight cases need their policy pinned
+
+**What:** A Temporal workflow is rebuilt after a restart by replaying its code against its recorded history. If
+the code now issues a different sequence of commands from the one history recorded, replay fails with a
+non-determinism error. Activity results, by contrast, are stored in history, so on replay the recorded result is
+returned and the activity's code is not run again.
+
+**Why here:** The quiz hint pointed at history, and it was only half right. `assess_risk` is called inside
+`risk_score_activity` (`services/pipeline/workflows/activities.py`), not in workflow code. So changing the formula
+does not break replay for a case that has already been scored. What does break, or quietly goes wrong:
+
+- **Changing the workflow around it.** Adding a step to load the tenant's policy, or a new activity call, changes
+  the command sequence, so an in-flight case fails on replay. That needs Temporal's `workflow.patched()` or a
+  versioned workflow, so old histories keep the old path.
+- **A case that has not reached scoring yet.** When it gets there, it is scored by whatever code is deployed,
+  under a policy that did not exist when it was submitted. The fix is to fix the policy version when the case
+  is created and pass it in, so each case is decided by the rules it entered under, and the audit row says which.
+- **Retries straddling a deploy.** A risk activity that fails and retries after a deploy runs the new code. That
+  is acceptable only because the policy version travels with the case.
+
+**Read more:** <https://docs.temporal.io/workflow-definition#deterministic-constraints>
+
+### Roll back a list by moving a pointer, never by deleting what was screened against
+
+**What:** A sanctions list changes daily. Each ingest is written as its own immutable snapshot, a
+`list_snapshots` row holding source, publication date, content hash and entry count, and its own Qdrant
+collection. Screening reads through an alias that points at the current snapshot.
+
+**Why here:** If an ingest produces bad embeddings, for example from a wrong model or a truncated file, rollback is
+pointing the alias back at the previous collection. Nothing is deleted. Because every hit and every screening
+audit row records `list_version`, "was this person screened against the bad snapshot?" stays answerable
+afterwards, and those cases can be re-screened deliberately. Deleting the bad collection, or re-ingesting
+over it in place, would lose exactly the evidence an auditor asks for: which list, on which date, decided this
+case. The audit table is insert-only (D13), so the record of the bad run cannot be erased by accident either.
+
+**Read more:** <https://qdrant.tech/documentation/concepts/collections/#collection-aliases>
+
+### Free embedding APIs are rate-limited, mutable and outside your data boundary
+
+**What:** A hosted embedding API meters requests per minute and per day, may change the model behind a name, and
+sees every string you send it.
+
+**Why here:** The real OFAC list is 19,484 SDN entries plus 20,204 aliases, about 40,000 names (downloaded
+2026-11-03). Through Gemini's free tier:
+
+- **Rate limits.** One ingest takes hours, may fail part-way, and every snapshot repeats it. An evaluation run
+  embeds thousands of query names on top of that.
+- **Repeatability.** If the hosted model changes, stored vectors and new query vectors no longer share a space, and
+  last week's evaluation numbers stop meaning anything.
+- **Data boundary.** The list is public, but the names being *screened* are customers' personal data. P-1 in
+  `improvements.md` already rules out sending real personal data to a free tier.
+
+A local ONNX model (D26) runs the whole list on a laptop CPU, gives the same vector for the same input every time,
+and keeps customer names on the box. Gemini remains available behind the `EmbeddingClient` protocol.
+
+**Read more:** <https://ai.google.dev/gemini-api/docs/rate-limits>
+
 ---
 
 ## Coming up later (named now so you know to watch for them)
